@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = []
+# ///
 """Fill template.html with review data, validating that every finding's
 quote resolves against the source text before writing anything out."""
 

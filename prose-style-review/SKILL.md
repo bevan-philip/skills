@@ -190,18 +190,32 @@ The data file shape:
 
 `family` is one of the eight ids above, or `strength`. `quote` must match the source character for character — the page locates it by string search, so a smart quote or a collapsed space breaks it. `occurrence` (default 1) picks which match when the string appears more than once. Keep quotes as short as the evidence allows: the span that actually misfires, not the whole sentence, unless the whole sentence is the finding. A `strength` record needs `severity: "strength"` and `reader`, and omits `move`.
 
+### Markdown input
+
+If the source is markdown — a `.md` file, or text the writer identifies as a README, doc, or markdown — run it through `scripts/extract_prose.py` before building anything:
+
+```
+uv run scripts/extract_prose.py <path-to-file.md>
+```
+
+Use its `text` output verbatim as the data file's `text` field. Don't hand-strip markdown yourself, and don't re-normalize whitespace or quotes — every finding's `quote` must resolve character-for-character, and only the deterministic output of this script is guaranteed to match itself on the next run. Code blocks, tables, YAML front matter, and raw HTML are excluded by the script and never appear on the review page.
+
+Headings are included but lightly reviewable: judge them only for curse-of-knowledge/jargon and clarity-of-the-claim issues. They're exempt from sentence-shape, cohesion, emphasis/stress-position, and coherence-arc diagnostics, since those assume full sentences and surrounding sentence context that a heading doesn't have. The script's `blocks` output (each entry tagged `heading`, `paragraph`, `list_item`, `blockquote`, or `footnote`) tells you which spans of `text` are headings, so cross-reference it before flagging a heading finding under one of the exempt families. Footnote bodies are full prose and get the full diagnostic treatment, same as any paragraph.
+
+If the source isn't markdown — prose pasted directly in chat, a `.txt` file — skip this step; nothing else about the workflow changes.
+
 **Check every quote resolves before you build the page.** `scripts/build_review.py` enforces this automatically: it re-derives each finding's position the same way the page's own script does, and if any quote fails to resolve it refuses to write output, printing the offending finding id, quote, and why (not found, or the requested occurrence doesn't exist) so you can fix and rerun rather than shipping a page with an "unplaced" count.
 
 Two delivery paths, depending on whether the Artifact tool is available in this session:
 
 - **Artifact tool available:** write the JSON data file into the scratchpad directory, then run:
   ```
-  python scripts/build_review.py --data <scratchpad>\data.json --out <scratchpad>\review.html
+  uv run scripts/build_review.py --data <scratchpad>\data.json --out <scratchpad>\review.html
   ```
   and publish the resulting `review.html` with the Artifact tool, as you would any other artifact.
 - **Artifact tool not available (running fully locally):** run the script with no `--out`, so it creates a fresh temp folder and writes `review.html` there, printing the path:
   ```
-  python scripts/build_review.py --data <path-to-data.json> --open
+  uv run scripts/build_review.py --data <path-to-data.json> --open
   ```
   `--open` launches the file in the system default browser (`os.startfile`) once it's written. Report the printed path in chat either way.
 

@@ -1,0 +1,47 @@
+{
+  "skill_name": "add-place",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1-oxford-st-john-lewis",
+      "prompt": "Add Oxford Street John Lewis Platter as a food place following the layout of the rest of the items.",
+      "expected_output": "A new note in London Places/Places/ for the sharing-platter offering at the John Lewis Oxford Street flagship, with category Food, coordinates close to the real building (300 Oxford Street, W1C 1DX), and borough Westminster.",
+      "files": [],
+      "expectations": [
+        "A new .md file was created in London Places/Places/",
+        "Frontmatter category is \"Food\"",
+        "Frontmatter borough is \"Westminster\"",
+        "Frontmatter lat/lng are within 300 meters of the real John Lewis Oxford Street building (51.5154356, -0.1452232)",
+        "Frontmatter includes type: place, status: to-visit, geocoded: true, and a tags list, matching sibling notes' shape"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2-lamb-pub-bloomsbury",
+      "prompt": "Add The Lamb pub on Lamb's Conduit Street in Bloomsbury to my places list, I want to go for a pint.",
+      "expected_output": "A new note in London Places/Places/ for The Lamb pub, filed under category Culture (matching how other pubs in the vault are categorized, not Food), kind Pub, borough Camden, with coordinates close to the real pub.",
+      "files": [],
+      "expectations": [
+        "A new .md file was created in London Places/Places/",
+        "Frontmatter category is \"Culture\" (matching the vault's existing convention of filing pubs under Culture, not Food)",
+        "Frontmatter kind is \"Pub\"",
+        "Frontmatter borough is \"Camden\"",
+        "Frontmatter lat/lng are within 300 meters of the real pub (51.5230834, -0.1190469)"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3-kew-gardens",
+      "prompt": "Add Kew Gardens as a place I want to visit.",
+      "expected_output": "A new note in London Places/Places/ for Kew Gardens (Royal Botanic Gardens), filed under category Culture, a garden-appropriate kind, borough Richmond upon Thames, with coordinates close to the real gardens.",
+      "files": [],
+      "expectations": [
+        "A new .md file was created in London Places/Places/",
+        "Frontmatter category is \"Culture\"",
+        "Frontmatter kind is a garden/park-appropriate value (e.g. \"Garden\" or \"Park\"), matching existing sibling notes for gardens",
+        "Frontmatter borough is \"Richmond upon Thames\"",
+        "Frontmatter lat/lng are within 400 meters of the real Kew Gardens (51.4781974, -0.2968861)"
+      ]
+    }
+  ]
+}
