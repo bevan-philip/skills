@@ -1,0 +1,191 @@
+<title>__TITLE__</title>
+<style>
+:root{--bg:#f7f8fa;--surface:#fff;--ink:#15181f;--ink2:#4a5160;--ink3:#79818f;--line:#e2e6ec;--line2:#c9d0da;--focus:#1d4ed8;
+--f-characters:#c2410c;--f-cohesion:#0f766e;--f-emphasis:#a16207;--f-shape:#1d4ed8;--f-concision:#be123c;--f-stance:#6d28d9;--f-knowledge:#15803d;--f-coherence:#0891b2;--f-strength:#64748b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101319;--surface:#171b23;--ink:#e8ebf0;--ink2:#a7aebc;--ink3:#7b8494;--line:#272c36;--line2:#39404d;--focus:#7da2ff;
+--f-characters:#fb923c;--f-cohesion:#2dd4bf;--f-emphasis:#e3b341;--f-shape:#7da2ff;--f-concision:#fb7185;--f-stance:#c4a8ff;--f-knowledge:#4ade80;--f-coherence:#38bdf8;--f-strength:#94a3b8}}
+:root[data-theme="dark"]{--bg:#101319;--surface:#171b23;--ink:#e8ebf0;--ink2:#a7aebc;--ink3:#7b8494;--line:#272c36;--line2:#39404d;--focus:#7da2ff;
+--f-characters:#fb923c;--f-cohesion:#2dd4bf;--f-emphasis:#e3b341;--f-shape:#7da2ff;--f-concision:#fb7185;--f-stance:#c4a8ff;--f-knowledge:#4ade80;--f-coherence:#38bdf8;--f-strength:#94a3b8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1140px;margin:0 auto;padding-inline:20px;padding-block:32px 64px}
+h1{font:600 clamp(26px,4vw,34px)/1.15 ui-serif,Georgia,serif;margin:0 0 8px;text-wrap:balance}
+.sub{color:var(--ink2);max-width:62ch;margin:0}
+.tally{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line2);font-size:13px;color:var(--ink2)}
+.tally b{color:var(--ink);font-variant-numeric:tabular-nums}
+.patterns{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin-top:28px}
+.pattern{background:var(--surface);padding:16px 18px}
+.pattern h2{font:600 16px/1.3 ui-serif,Georgia,serif;margin:0 0 6px}
+.pattern p{margin:0;font-size:13px;line-height:1.55;color:var(--ink2)}
+.pattern .n{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px}
+.grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:36px;margin-top:36px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr;gap:28px}}
+article{font:18px/1.7 ui-serif,Georgia,serif}
+article p{margin:0 0 1.1em;max-width:64ch}
+.note{font:12.5px/1.5 inherit;font-family:inherit;color:var(--ink3);margin:0 0 20px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.hl{background:color-mix(in srgb,var(--c1) 9%,transparent);border-bottom:2px solid var(--c1);cursor:pointer}
+.hl.sev-blocking{border-bottom-width:3px}
+.hl.sev-polish{border-bottom-width:1.5px;border-bottom-style:dashed}
+.hl.sev-strength{border-bottom-width:2px;border-bottom-style:dotted;background:transparent}
+.hl.d2,.hl.d3{background:color-mix(in srgb,var(--c1) 18%,transparent);box-shadow:0 4px 0 -2px var(--c2)}
+.hl.d3{background:color-mix(in srgb,var(--c1) 26%,transparent)}
+.hl:hover{background:color-mix(in srgb,var(--c1) 26%,transparent)}
+.hl.active{background:color-mix(in srgb,var(--c1) 34%,transparent)}
+.hl:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}
+@media (max-width:860px){.rail{position:static}}
+.filters{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:11px/1 inherit;font-family:inherit;letter-spacing:.03em;padding:6px 9px;border:1px solid var(--line2);background:transparent;color:var(--ink2);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--c);margin-right:6px}
+.chip:focus-visible,.card:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.railhead{display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 8px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3)}
+.clear{background:none;border:0;color:var(--focus);font:inherit;font-size:11px;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;padding:0;text-decoration:underline}
+.list{display:flex;flex-direction:column;gap:1px;background:var(--line);border-block:1px solid var(--line)}
+.card{background:var(--surface);border:0;border-left:3px solid var(--c);text-align:left;padding:14px 16px;font:inherit;color:inherit;cursor:pointer;width:100%}
+.card:hover{background:color-mix(in srgb,var(--c) 7%,var(--surface))}
+.card.active{background:color-mix(in srgb,var(--c) 12%,var(--surface))}
+.card .meta{display:flex;justify-content:space-between;gap:10px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--c);margin-bottom:6px}
+.card .sev{color:var(--ink3)}
+.card h3{font:600 14.5px/1.35 inherit;font-family:inherit;margin:0 0 6px}
+.card blockquote{font:italic 13.5px/1.5 ui-serif,Georgia,serif;color:var(--ink2);margin:0 0 8px;padding-left:10px;border-left:1px solid var(--line2)}
+.card p{margin:0;font-size:13.5px;line-height:1.55;color:var(--ink2)}
+.card .move{margin-top:9px;padding-top:9px;border-top:1px solid var(--line);font-size:13px;color:var(--ink)}
+.card .move span{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:3px}
+.empty{background:var(--surface);padding:16px;font-size:13.5px;color:var(--ink3)}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;line-height:1.6;color:var(--ink3);max-width:70ch}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>__TITLE__</h1>
+    <p class="sub">__SUBTITLE__</p>
+    <div class="tally" id="tally"></div>
+  </header>
+  <section class="patterns" id="patterns"></section>
+  <div class="grid">
+    <div>
+      <p class="note">Underlines mark findings &mdash; thickness for severity, colour for family, a doubled underline where more than one finding lands on the same words. Click any marked passage to see what is flagged there; dotted marks are passages that are working.</p>
+      <article id="text"></article>
+    </div>
+    <aside class="rail">
+      <div class="filters" id="filters"></div>
+      <div class="railhead"><span id="railcount"></span><button class="clear" id="clear" hidden>Show all</button></div>
+      <div class="list" id="list"></div>
+    </aside>
+  </div>
+  <footer>Diagnostic review. Each finding describes what a reader does at that point and names the structural move available; no replacement wording is supplied anywhere on this page, on the principle that a supplied sentence ends the writer&rsquo;s thinking while a named pattern carries to the next draft.</footer>
+</div>
+
+<script>
+/* ===== DATA — replace these three values, and nothing below them ===== */
+const PATTERNS = __PATTERNS__;
+const TEXT = __TEXT__;
+const FINDINGS = __FINDINGS__;
+/* ===== end of data ===== */
+
+const FAMILIES = {characters:"Characters & actions",cohesion:"Cohesion & topic flow",emphasis:"Emphasis & stress",shape:"Sentence shape",concision:"Concision",stance:"Classic style & stance",knowledge:"Curse of knowledge",coherence:"Coherence arcs",strength:"Working well"};
+const RANK = {blocking:3,friction:2,polish:1,strength:0};
+const el = id => document.getElementById(id);
+
+FINDINGS.forEach(f => {
+  let i = -1, n = f.occurrence || 1;
+  for (let k = 0; k < n; k++) i = TEXT.indexOf(f.quote, i + 1);
+  f.start = i; f.end = i + f.quote.length;
+});
+const LOST = FINDINGS.filter(f => f.start < 0);
+const OK = FINDINGS.filter(f => f.start >= 0);
+
+/* paragraphs, then flat segments: overlapping findings layer instead of nesting */
+let cur = 0;
+TEXT.split(/\n\n+/).forEach(p => {
+  const s = TEXT.indexOf(p, cur), e = s + p.length; cur = e;
+  const node = document.createElement("p");
+  const inside = OK.filter(f => f.start < e && f.end > s);
+  const pts = [...new Set([s, e, ...inside.flatMap(f => [Math.max(f.start,s), Math.min(f.end,e)])])].sort((a,b)=>a-b);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i+1], mid = (a+b)/2;
+    const hits = inside.filter(f => f.start <= mid && f.end >= mid).sort((x,y)=>RANK[y.severity]-RANK[x.severity]);
+    if (!hits.length) { node.appendChild(document.createTextNode(TEXT.slice(a,b))); continue; }
+    const span = document.createElement("span");
+    span.className = "hl sev-" + hits[0].severity + (hits.length > 1 ? " d" + Math.min(hits.length,3) : "");
+    span.tabIndex = 0; span.setAttribute("role","button");
+    span.setAttribute("aria-label", hits.length + " finding" + (hits.length>1?"s":"") + ": " + hits.map(h=>h.label).join("; "));
+    span.dataset.ids = hits.map(h=>h.id).join(" ");
+    span.style.setProperty("--c1","var(--f-"+hits[0].family+")");
+    if (hits[1]) span.style.setProperty("--c2","var(--f-"+hits[1].family+")");
+    span.textContent = TEXT.slice(a,b);
+    span.onclick = () => select(span.dataset.ids.split(" "));
+    span.onkeydown = ev => { if (ev.key==="Enter"||ev.key===" ") { ev.preventDefault(); select(span.dataset.ids.split(" ")); } };
+    node.appendChild(span);
+  }
+  el("text").appendChild(node);
+});
+
+el("patterns").innerHTML = PATTERNS.map(p =>
+  '<div class="pattern"><span class="n"></span><h2></h2><p></p></div>').join("");
+[...el("patterns").children].forEach((d,i) => {
+  d.querySelector(".n").textContent = PATTERNS[i].count;
+  d.querySelector("h2").textContent = PATTERNS[i].title;
+  d.querySelector("p").textContent = PATTERNS[i].note;
+});
+
+const issues = OK.filter(f => f.severity !== "strength");
+const counts = {}; OK.forEach(f => counts[f.family] = (counts[f.family]||0) + 1);
+el("tally").innerHTML = [
+  ["findings", issues.length], ["blocking", issues.filter(f=>f.severity==="blocking").length],
+  ["friction", issues.filter(f=>f.severity==="friction").length],
+  ["passages working well", OK.filter(f=>f.severity==="strength").length],
+  ["words", TEXT.trim().split(/\s+/).length]
+].map(([k,v]) => "<span><b>"+v+"</b> "+k+"</span>").join("")
+ + (LOST.length ? '<span style="color:var(--f-concision)"><b>'+LOST.length+'</b> unplaced</span>' : "");
+
+let fam = null, ids = null;
+Object.keys(FAMILIES).filter(k => counts[k]).forEach(k => {
+  const b = document.createElement("button");
+  b.className = "chip"; b.type = "button"; b.dataset.fam = k;
+  b.setAttribute("aria-pressed","false");
+  b.style.setProperty("--c","var(--f-"+k+")");
+  b.innerHTML = '<span class="dot"></span>' + FAMILIES[k] + " " + counts[k];
+  b.onclick = () => { fam = fam === k ? null : k; ids = null; render(); };
+  el("filters").appendChild(b);
+});
+el("clear").onclick = () => { fam = null; ids = null; render(); };
+
+function select(list) { ids = list; fam = null; render(); el("list").scrollIntoView({block:"nearest",behavior:"smooth"}); }
+
+function render() {
+  let shown = ids ? OK.filter(f => ids.includes(f.id)) : fam ? OK.filter(f => f.family === fam) : OK;
+  shown = [...shown].sort((a,b) => a.start - b.start);
+  [...el("filters").children].forEach(b => b.setAttribute("aria-pressed", String(b.dataset.fam === fam)));
+  el("railcount").textContent = (ids ? "On this passage" : fam ? FAMILIES[fam] : "All findings") + " — " + shown.length;
+  el("clear").hidden = !(ids || fam);
+  el("list").innerHTML = "";
+  if (!shown.length) { el("list").innerHTML = '<div class="empty">Nothing flagged in this family.</div>'; return; }
+  shown.forEach(f => {
+    const c = document.createElement("button");
+    c.className = "card"; c.type = "button";
+    c.style.setProperty("--c","var(--f-"+f.family+")");
+    c.innerHTML = '<div class="meta"><span class="fam"></span><span class="sev"></span></div><h3></h3><blockquote></blockquote><p></p>'
+      + (f.move ? '<div class="move"><span>The move</span><em></em></div>' : "");
+    c.querySelector(".fam").textContent = FAMILIES[f.family];
+    c.querySelector(".sev").textContent = f.severity === "strength" ? "" : f.severity;
+    c.querySelector("h3").textContent = f.label;
+    c.querySelector("blockquote").textContent = "“" + (f.quote.length > 150 ? f.quote.slice(0,150) + "…" : f.quote) + "”";
+    c.querySelector("p").textContent = f.reader;
+    if (f.move) c.querySelector(".move em").textContent = f.move;
+    c.onclick = () => focusSpan(f.id, c);
+    el("list").appendChild(c);
+  });
+}
+
+function focusSpan(id, card) {
+  document.querySelectorAll(".hl.active,.card.active").forEach(n => n.classList.remove("active"));
+  card.classList.add("active");
+  const spans = [...document.querySelectorAll(".hl")].filter(s => s.dataset.ids.split(" ").includes(id));
+  spans.forEach(s => s.classList.add("active"));
+  if (spans[0]) spans[0].scrollIntoView({behavior:"smooth",block:"center"});
+}
+render();
+</script>
