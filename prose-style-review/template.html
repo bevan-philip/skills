@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>__TITLE__</title>
 <style>
 :root{--bg:#f7f8fa;--surface:#fff;--ink:#15181f;--ink2:#4a5160;--ink3:#79818f;--line:#e2e6ec;--line2:#c9d0da;--focus:#1d4ed8;
@@ -22,6 +23,24 @@ h1{font:600 clamp(26px,4vw,34px)/1.15 ui-serif,Georgia,serif;margin:0 0 8px;text
 @media (max-width:860px){.grid{grid-template-columns:1fr;gap:28px}}
 article{font:18px/1.7 ui-serif,Georgia,serif}
 article p{margin:0 0 1.1em;max-width:64ch}
+article :is(h1,h2,h3,h4,h5,h6){font:600 1em/1.3 ui-serif,Georgia,serif;margin:1.4em 0 .5em;max-width:64ch}
+article h1{font-size:1.45em}article h2{font-size:1.3em}article h3{font-size:1.15em}
+article>:first-child{margin-top:0}
+article :is(ul,ol){margin:0 0 1.1em;padding-left:1.4em;max-width:64ch}
+article li{margin:0 0 .35em}
+article li>:is(ul,ol){margin:.35em 0 0}
+article blockquote{margin:0 0 1.1em;padding-left:16px;border-left:3px solid var(--line2);color:var(--ink2);max-width:62ch}
+article .fn{font-size:.85em;color:var(--ink2)}
+article .fn:first-of-type,article hr+.fn{border-top:1px solid var(--line);padding-top:.8em}
+article sup{font:11px/1 ui-sans-serif,system-ui,sans-serif;color:var(--ink3);padding-left:1px}
+article code{font:.84em/1 ui-monospace,SFMono-Regular,Consolas,monospace;background:color-mix(in srgb,var(--ink) 6%,transparent);padding:1px 4px}
+article .lnk{text-decoration:underline 1px var(--ink3);text-underline-offset:5px}
+article hr{border:0;border-top:1px solid var(--line2);margin:1.6em 0}
+.display{position:relative;opacity:.6;margin:0 0 1.1em;max-width:64ch;overflow-x:auto;font-size:13px}
+.display::before{content:attr(data-label);display:block;font:10.5px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px}
+.display pre{margin:0;padding:10px 12px;background:color-mix(in srgb,var(--ink) 5%,transparent);font:12.5px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre}
+.display table{border-collapse:collapse;font:13px/1.4 ui-sans-serif,system-ui,sans-serif}
+.display td{border:1px solid var(--line2);padding:4px 8px;vertical-align:top}
 .note{font:12.5px/1.5 inherit;font-family:inherit;color:var(--ink3);margin:0 0 20px;padding-bottom:14px;border-bottom:1px solid var(--line)}
 .hl{background:color-mix(in srgb,var(--c1) 9%,transparent);border-bottom:2px solid var(--c1);cursor:pointer}
 .hl.sev-blocking{border-bottom-width:3px}
@@ -79,9 +98,10 @@ footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);font-si
 </div>
 
 <script>
-/* ===== DATA — replace these three values, and nothing below them ===== */
+/* ===== DATA — replace these four values, and nothing below them ===== */
 const PATTERNS = __PATTERNS__;
 const TEXT = __TEXT__;
+const DOC = __DOC__;
 const FINDINGS = __FINDINGS__;
 /* ===== end of data ===== */
 
@@ -97,17 +117,29 @@ FINDINGS.forEach(f => {
 const LOST = FINDINGS.filter(f => f.start < 0);
 const OK = FINDINGS.filter(f => f.start >= 0);
 
-/* paragraphs, then flat segments: overlapping findings layer instead of nesting */
-let cur = 0;
-TEXT.split(/\n\n+/).forEach(p => {
-  const s = TEXT.indexOf(p, cur), e = s + p.length; cur = e;
-  const node = document.createElement("p");
+/* blocks, then flat segments: findings and inline marks both cut the text, so overlaps layer instead of nesting */
+const MARKS = DOC.marks || [], FNREFS = DOC.fnrefs || [];
+const WRAP = [["code","code"],["delete","del"],["emphasis","em"],["strong","strong"],["link","span"]];
+function fill(node, s, e) {
   const inside = OK.filter(f => f.start < e && f.end > s);
-  const pts = [...new Set([s, e, ...inside.flatMap(f => [Math.max(f.start,s), Math.min(f.end,e)])])].sort((a,b)=>a-b);
-  for (let i = 0; i < pts.length - 1; i++) {
-    const a = pts[i], b = pts[i+1], mid = (a+b)/2;
+  const marks = MARKS.filter(m => m.start < e && m.end > s);
+  const refs = FNREFS.filter(r => r.at >= s && r.at <= e);
+  const pts = [...new Set([s, e, ...refs.map(r => r.at),
+    ...[...inside, ...marks].flatMap(f => [Math.max(f.start,s), Math.min(f.end,e)])])].sort((a,b)=>a-b);
+  pts.forEach((a, i) => {
+    refs.filter(r => r.at === a).forEach(r => { const sup = document.createElement("sup"); sup.textContent = r.label; node.appendChild(sup); });
+    const b = pts[i+1]; if (b === undefined) return;
+    const mid = (a+b)/2;
+    let content = document.createTextNode(TEXT.slice(a,b));
+    WRAP.forEach(([kind, tag]) => {
+      const m = marks.find(m => m.kind === kind && m.start <= mid && m.end >= mid);
+      if (!m) return;
+      const w = document.createElement(tag); w.appendChild(content);
+      if (kind === "link") { w.className = "lnk"; w.title = m.href; }
+      content = w;
+    });
     const hits = inside.filter(f => f.start <= mid && f.end >= mid).sort((x,y)=>RANK[y.severity]-RANK[x.severity]);
-    if (!hits.length) { node.appendChild(document.createTextNode(TEXT.slice(a,b))); continue; }
+    if (!hits.length) { node.appendChild(content); return; }
     const span = document.createElement("span");
     span.className = "hl sev-" + hits[0].severity + (hits.length > 1 ? " d" + Math.min(hits.length,3) : "");
     span.tabIndex = 0; span.setAttribute("role","button");
@@ -115,12 +147,57 @@ TEXT.split(/\n\n+/).forEach(p => {
     span.dataset.ids = hits.map(h=>h.id).join(" ");
     span.style.setProperty("--c1","var(--f-"+hits[0].family+")");
     if (hits[1]) span.style.setProperty("--c2","var(--f-"+hits[1].family+")");
-    span.textContent = TEXT.slice(a,b);
+    span.appendChild(content);
     span.onclick = () => select(span.dataset.ids.split(" "));
     span.onkeydown = ev => { if (ev.key==="Enter"||ev.key===" ") { ev.preventDefault(); select(span.dataset.ids.split(" ")); } };
     node.appendChild(span);
+  });
+}
+
+let blocks = DOC.blocks || [];
+if (!blocks.length) {
+  let cur = 0;
+  blocks = TEXT.split(/\n\n+/).map(p => { const s = TEXT.indexOf(p, cur); cur = s + p.length; return {type:"paragraph", start:s, end:cur}; });
+}
+const article = el("text");
+let lists = [];  /* open lists, innermost last: {id, level, node} */
+blocks.forEach(b => {
+  if (b.type !== "list_item") lists = [];
+  if (b.display) {
+    const d = document.createElement("div"); d.className = "display";
+    if (b.type === "hr") { article.appendChild(document.createElement("hr")); return; }
+    if (b.type === "code") {
+      d.dataset.label = (b.lang ? b.lang + " code" : "Code") + " \u00b7 not reviewed";
+      const pre = document.createElement("pre"); pre.textContent = b.value.replace(/\n$/, ""); d.appendChild(pre);
+    } else {
+      d.dataset.label = "Table \u00b7 not reviewed";
+      const t = document.createElement("table");
+      b.rows.forEach(r => { const tr = t.insertRow(); r.forEach(c => { tr.insertCell().textContent = c; }); });
+      d.appendChild(t);
+    }
+    article.appendChild(d); return;
   }
-  el("text").appendChild(node);
+  let node;
+  if (b.type === "list_item") {
+    while (lists.length && (lists.at(-1).level > b.level || (lists.at(-1).level === b.level && lists.at(-1).id !== b.list))) lists.pop();
+    let top = lists.at(-1);
+    if (!top || top.level < b.level) {
+      const l = document.createElement(b.ordered ? "ol" : "ul");
+      if (b.ordered && b.number !== 1) l.start = b.number;
+      (top ? top.node.lastElementChild || top.node : article).appendChild(l);
+      top = {id: b.list, level: b.level, node: l}; lists.push(top);
+    }
+    node = document.createElement("li"); top.node.appendChild(node);
+  } else {
+    node = document.createElement(b.type === "heading" ? "h" + Math.min(b.depth || 1, 6) : b.type === "blockquote" ? "blockquote" : "p");
+    if (b.type === "footnote") {
+      node.className = "fn";
+      const sup = document.createElement("sup"); sup.textContent = b.label; node.appendChild(sup);
+      node.appendChild(document.createTextNode(" "));
+    }
+    article.appendChild(node);
+  }
+  fill(node, b.start, b.end);
 });
 
 el("patterns").innerHTML = PATTERNS.map(p =>

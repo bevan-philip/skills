@@ -149,30 +149,19 @@ Be honest about strengths too. Mark two or three spans as `strength` where the w
 
 ## The review page
 
-Deliver the findings as one page: a **fixed template** that lives at `template.html` next to this file. Never edit that file, and never hand-copy or reproduce its HTML/CSS/JS — it has five placeholders (`__TITLE__`, `__SUBTITLE__`, `__PATTERNS__`, `__TEXT__`, `__FINDINGS__`) and nothing else about it varies. A style review is a reading surface, and it should look the same every time so the writer learns the notation once rather than on every draft. The template is self-contained: no fonts, no libraries, no network. Don't load a design skill for it; the design decisions are already made.
+Deliver the findings as one page built from a **fixed template**, `template.html` next to this file. Never edit it and never reproduce its HTML/CSS/JS: a style review is a reading surface, and it should look the same every time so the writer learns the notation once. The template is self-contained (no fonts, libraries or network), so don't load a design skill for it.
 
-The five placeholders:
+`scripts/review.py` does all the page work. It reads the source file itself, renders its Markdown (headings, lists, emphasis, links, footnotes; code blocks and tables appear dimmed as "not reviewed"), checks every quote resolves, and writes the page. You supply only the findings. You never write out the source text.
 
-| Placeholder | What goes in it |
-|---|---|
-| `__TITLE__` | Two to four words naming the piece under review, e.g. `Onboarding Memo Review`. Appears in the tab and as the heading. |
-| `__SUBTITLE__` | One or two sentences: what was reviewed and against what. Plain text. |
-| `__PATTERNS__` | A JSON array of two or three habit objects: `{"count": "Habit 01 · 6 findings", "title": "...", "note": "..."}`. |
-| `__TEXT__` | The source text as a JSON string, paragraphs separated by `\n\n`, exactly as the writer wrote it. |
-| `__FINDINGS__` | The JSON array of finding records. |
+### First review
 
-### Building the page
-
-Don't fill the template by hand — assemble the review as a small JSON data object and run `scripts/build_review.py` against it. This is the whole point of the split: you produce the structured data (title, subtitle, patterns, text, findings) that the review requires anyway, and you never touch or reproduce the ~230 lines of HTML/CSS/JS that make up the page.
-
-The data file shape:
+Write a findings file into the scratchpad with the Write tool (not a shell heredoc; quoting breaks):
 
 ```json
 {
   "title": "Onboarding Memo Review",
   "subtitle": "What was reviewed and against what.",
   "patterns": [{"count": "Habit 01 · 6 findings", "title": "...", "note": "..."}],
-  "text": "Paragraph one.\n\nParagraph two.",
   "findings": [
     {
       "id": "f7",
@@ -188,39 +177,60 @@ The data file shape:
 }
 ```
 
-`family` is one of the eight ids above, or `strength`. `quote` must match the source character for character — the page locates it by string search, so a smart quote or a collapsed space breaks it. `occurrence` (default 1) picks which match when the string appears more than once. Keep quotes as short as the evidence allows: the span that actually misfires, not the whole sentence, unless the whole sentence is the finding. A `strength` record needs `severity: "strength"` and `reader`, and omits `move`.
-
-### Markdown input
-
-If the source is markdown — a `.md` file, or text the writer identifies as a README, doc, or markdown — run it through `scripts/extract_prose.py` before building anything:
+Then build:
 
 ```
-uv run scripts/extract_prose.py <path-to-file.md>
+uv run scripts/review.py build <source> --findings <scratchpad>/findings.json --out <scratchpad>/review.html
 ```
 
-Use its `text` output verbatim as the data file's `text` field. Don't hand-strip markdown yourself, and don't re-normalize whitespace or quotes — every finding's `quote` must resolve character-for-character, and only the deterministic output of this script is guaranteed to match itself on the next run. Code blocks, tables, YAML front matter, and raw HTML are excluded by the script and never appear on the review page.
+`<source>` is the file under review. `.md`, `.markdown` and `.mdx` files are parsed as Markdown; anything else is plain text with blank-line paragraphs. If the writer pasted text into chat, save it to `<scratchpad>/pasted.txt` first and use that as the source.
 
-Headings are included but lightly reviewable: judge them only for curse-of-knowledge/jargon and clarity-of-the-claim issues. They're exempt from sentence-shape, cohesion, emphasis/stress-position, and coherence-arc diagnostics, since those assume full sentences and surrounding sentence context that a heading doesn't have. The script's `blocks` output (each entry tagged `heading`, `paragraph`, `list_item`, `blockquote`, or `footnote`) tells you which spans of `text` are headings, so cross-reference it before flagging a heading finding under one of the exempt families. Footnote bodies are full prose and get the full diagnostic treatment, same as any paragraph.
+- `title`: two to four words naming the piece. `subtitle`: one or two plain sentences. `patterns`: two or three habit objects.
+- `family` is one of the eight ids above, or `strength`. A `strength` record has `severity: "strength"` and `reader`, and omits `move`.
+- `quote` must match the **rendered plain text** character for character: no Markdown syntax (`*`, `_`, `` ` ``, `[`), link text without the URL, curly quotes kept as the writer typed them. Read the source file to find quotes. `occurrence` (default 1) picks which match when the string appears more than once. Keep quotes as short as the evidence allows.
+- Headings are reviewable only for curse-of-knowledge and clarity-of-the-claim problems, not for shape, cohesion, emphasis or coherence, which assume full sentences. Footnotes get the full treatment. Code blocks, tables and front matter aren't reviewed.
 
-If the source isn't markdown — prose pasted directly in chat, a `.txt` file — skip this step; nothing else about the workflow changes.
+If a quote doesn't resolve, the build refuses and lists each bad finding id with the reason. Fix those and rerun.
 
-**Check every quote resolves before you build the page.** `scripts/build_review.py` enforces this automatically: it re-derives each finding's position the same way the page's own script does, and if any quote fails to resolve it refuses to write output, printing the offending finding id, quote, and why (not found, or the requested occurrence doesn't exist) so you can fix and rerun rather than shipping a page with an "unplaced" count.
+Delivery:
 
-Two delivery paths, depending on whether the Artifact tool is available in this session:
+- **Artifact tool available:** publish `<scratchpad>/review.html` with the Artifact tool. Republishing the same path later keeps the same URL.
+- **Running fully locally:** omit `--out` and add `--open`. The page is written next to the saved state and opened in the default browser. Report the printed path.
 
-- **Artifact tool available:** write the JSON data file into the scratchpad directory, then run:
-  ```
-  uv run scripts/build_review.py --data <scratchpad>\data.json --out <scratchpad>\review.html
-  ```
-  and publish the resulting `review.html` with the Artifact tool, as you would any other artifact.
-- **Artifact tool not available (running fully locally):** run the script with no `--out`, so it creates a fresh temp folder and writes `review.html` there, printing the path:
-  ```
-  uv run scripts/build_review.py --data <path-to-data.json> --open
-  ```
-  `--open` launches the file in the system default browser (`os.startfile`) once it's written. Report the printed path in chat either way.
+### Re-reviews
 
-The template itself handles the layering: it splits the text into paragraphs, resolves each quote to a character range, cuts the text at every finding boundary, and renders flat segments carrying a set of finding ids. That is what lets two findings overlap partially — a long windup that also wastes the stress position — without the nested spans that would otherwise break. One finding on a stretch is a tinted underline, two or more is a heavier tint with a doubled underline in the second family's colour. Severity sets the underline weight; strengths are dotted and untinted so they don't compete.
+Every build saves the review (findings plus a snapshot of the text) to a folder per source file under the system temp directory. That state outlives the session, so a re-review works the same after `/clear`.
+
+When the writer asks for another pass, start with:
+
+```
+uv run scripts/review.py status <source>
+```
+
+It prints only what you need: which blocks changed (with their current text), which were removed or moved, and three lists of existing findings.
+
+- **Stale:** the quote no longer exists. Remove the finding, or re-quote it if the problem survives in the new wording.
+- **Re-judge:** the finding sits in a changed block. Read the block again and keep, revise, downgrade to a strength, or remove.
+- **Check:** a cohesion, coherence or emphasis finding next to a changed block. The junction may have been fixed or broken.
+
+Then read the changed blocks from scratch for new findings, just as you would on a first pass. Leave carried findings alone. Write a patch file and build with it:
+
+```json
+{"remove": ["f3"], "upsert": [{"id": "f2", "...": "..."}, {"id": "f21", "...": "..."}], "patterns": [ ... ]}
+```
+
+```
+uv run scripts/review.py build <source> --patch <scratchpad>/patch.json --out <scratchpad>/review.html
+```
+
+`upsert` replaces a finding with the same id or adds a new one. Use fresh ids for new findings, never reuse a removed one. Include `patterns` (and `subtitle`) only if they change. Update the habit counts when the findings shift.
+
+If `status` suggests a full review (a large share of blocks changed, or blocks moved), don't patch. Read the whole source again and build with `--findings`. A restructured draft needs the three-pass read; patching findings onto it misses the new seams. Also do a full review when the writer asks for a fresh look.
+
+Don't print or re-extract the whole text during a re-review. If you need more context around a changed block, `Read` the source file.
 
 ### Closing in chat
 
-Keep it short. Name the two or three habits, say what the piece is already doing well, and point at the page. Don't restate the findings — they're in the page, and repeating them in chat is how a careful review turns into noise.
+Keep it short. Name the two or three habits, say what the piece is already doing well, and point at the page. Don't restate the findings; they're on the page, and repeating them in chat is how a careful review turns into noise.
+
+On a re-review, say what moved since the last pass: what's fixed, what's new, and what's still open. Say it in a few lines, not per finding.
