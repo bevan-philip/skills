@@ -4,9 +4,13 @@ import { z } from 'zod'
 // the page writes `feedback.json` (FeedbackFile). Neither side edits the
 // other's file, so there are no write races.
 
+// Ids key plain objects all over the page and server (diffs, changes,
+// reopened answers), so a name every object already has, like "constructor",
+// would read back a built-in function instead of nothing.
 const id = z
   .string()
   .regex(/^[A-Za-z0-9][\w.-]*$/, 'ids use letters, digits, "-", "_" or "." and start with a letter or digit')
+  .refine((s) => !(s in Object.prototype), 'that id is a name every JavaScript object already has (like "constructor" or "toString"); pick another')
 
 const md = z.string()
 

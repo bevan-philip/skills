@@ -28,7 +28,7 @@
 
 | Field | |
 | --- | --- |
-| `id` | Required and unique. Letters, digits, `-`, `_`, `.`. **Keep it stable across revisions.** |
+| `id` | Required and unique. Letters, digits, `-`, `_`, `.`, and not a built-in object property name such as `constructor` or `toString`. **Keep it stable across revisions.** |
 | `type` | One of the types below. |
 | `title` | Heading of the card. Defaults to the type's name. |
 | `note` | One line of Markdown under the title, saying how to read the block. |
