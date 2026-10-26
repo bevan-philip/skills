@@ -13,10 +13,12 @@ import {
   type BoardView,
   type Draft,
   type FeedbackFile,
+  type Reopened,
   type Round,
   type Verdict,
   STALE_REVISION,
 } from '@/lib/schema'
+import { answered, choiceLabel, decisionSubstance } from '@/lib/state'
 
 // One server for all boards. Each board lives in BOUNDARY_ROOT/<id>/:
 //   doc.json       written by the agent
@@ -37,6 +39,8 @@ type Entry = {
   revision: number
   updatedAt: string
   feedback: FeedbackFile
+  // Parsed history snapshots. A revision never changes once written.
+  snapshots: Map<number, Board>
   watcher?: fs.FSWatcher
   reloadTimer?: ReturnType<typeof setTimeout>
   lock: Promise<unknown>
@@ -159,11 +163,67 @@ async function latestSnapshot(e: Entry): Promise<number> {
 
 async function snapshotAt(e: Entry, rev: number): Promise<Board | null> {
   if (rev <= 0) return null
+  const cached = e.snapshots.get(rev)
+  if (cached) return cached
   try {
-    return parseDoc(await fsp.readFile(path.join(historyDir(e), `${rev}.json`), 'utf8')).doc
+    const doc = parseDoc(await fsp.readFile(path.join(historyDir(e), `${rev}.json`), 'utf8')).doc
+    if (doc) e.snapshots.set(rev, doc)
+    return doc
   } catch {
     return null
   }
+}
+
+// Answers the agent has made obsolete by rewriting the decision they answered
+// (see decisionSubstance), up to revision `last`. With `next`, also checks a
+// doc that isn't stored yet as if it were revision last + 1.
+async function reopenedAnswers(e: Entry, last: number, next?: Board): Promise<Record<string, Reopened[]>> {
+  const out: Record<string, Reopened[]> = {}
+  const end = next ? last + 1 : last
+  const at = (rev: number) => (next && rev === end ? Promise.resolve(next) : snapshotAt(e, rev))
+  const rounds = e.feedback.rounds
+  for (const [i, r] of rounds.entries()) {
+    for (const c of r.items) {
+      if (c.type !== 'choice' || c.defer === 'explore' || !answered(c)) continue
+      const before = (await snapshotAt(e, r.revision))?.blocks.find((b) => b.id === c.block)
+      if (before?.type !== 'decision') continue
+      // Once the human sends another answer to this decision, this one is
+      // theirs to have replaced, not the agent's to have reopened.
+      const replaced = rounds.slice(i + 1).find((later) => later.items.some((x) => x.type === 'choice' && x.block === c.block))
+      const was = decisionSubstance(before)
+      for (let rev = r.revision + 1; rev <= Math.min(end, replaced?.revision ?? end); rev++) {
+        const now = (await at(rev))?.blocks.find((b) => b.id === c.block)
+        if (now?.type !== 'decision' || decisionSubstance(now) === was) continue
+        ;(out[c.block] ??= []).push({
+          item: c.id,
+          round: r.n,
+          answer: choiceLabel(c, before),
+          note: c.note,
+          revision: rev,
+          reason: now.changeNote,
+        })
+        break
+      }
+    }
+  }
+  return out
+}
+
+// Reopening an answered decision has to say why, because the page shows the
+// reason where the human's answer used to be.
+async function unexplainedReopens(e: Entry, last: number, next: Board): Promise<string | null> {
+  const after = await reopenedAnswers(e, last, next)
+  const out: string[] = []
+  next.blocks.forEach((b, i) => {
+    const r = after[b.id]?.find((x) => x.revision === last + 1)
+    if (b.type !== 'decision' || !r || b.changeNote?.trim()) return
+    out.push(
+      `- blocks.${i}(${b.id}): the human answered this decision in round ${r.round} (${JSON.stringify(r.answer)}). ` +
+        'Changing its question or options reopens it and asks them again, so set "changeNote" to say why it is open again. ' +
+        'To keep their answer, change only recommended, evidence, metrics, context or changeNote.',
+    )
+  })
+  return out.length ? out.join('\n') : null
 }
 
 // Re-read doc.json; when its content differs from the latest snapshot, store
@@ -178,8 +238,15 @@ async function reload(e: Entry): Promise<boolean> {
     e.error = 'doc.json not found'
     return changed
   }
-  const { doc, error, raw } = parseDoc(text)
-  if (!doc) {
+  const parsed = parseDoc(text)
+  const { doc, raw } = parsed
+  let error = parsed.error
+  const normal = JSON.stringify(raw, null, 2)
+  const rev = await latestSnapshot(e)
+  let prev: string | null = null
+  if (rev > 0) prev = await fsp.readFile(path.join(historyDir(e), `${rev}.json`), 'utf8').catch(() => null)
+  if (doc && prev !== normal && e.feedback.rounds.length) error = await unexplainedReopens(e, rev, doc)
+  if (!doc || error) {
     // Keep showing the last good doc; surface the error alongside it. After a
     // restart the last good doc is the newest snapshot.
     const changed = e.error !== error
@@ -190,10 +257,6 @@ async function reload(e: Entry): Promise<boolean> {
     }
     return changed
   }
-  const normal = JSON.stringify(raw, null, 2)
-  const rev = await latestSnapshot(e)
-  let prev: string | null = null
-  if (rev > 0) prev = await fsp.readFile(path.join(historyDir(e), `${rev}.json`), 'utf8').catch(() => null)
   let changed = e.error !== null || e.doc === null
   if (prev !== normal) {
     await fsp.mkdir(historyDir(e), { recursive: true })
@@ -234,6 +297,7 @@ async function load(id: string, dir: string): Promise<Entry> {
     revision: 0,
     updatedAt: new Date().toISOString(),
     feedback: { draft: { items: [] }, rounds: [] },
+    snapshots: new Map(),
     lock: Promise.resolve(),
     docLock: Promise.resolve(),
   }
@@ -300,6 +364,7 @@ export async function getView(id: string): Promise<BoardView> {
     updatedAt: e.updatedAt,
     baseline,
     feedback: e.feedback,
+    reopened: await reopenedAnswers(e, e.revision),
     listening: isListening(id),
   }
 }
@@ -425,7 +490,7 @@ export async function getRound(id: string, n?: number) {
 
 export async function docFor(id: string) {
   const e = await entry(id)
-  return { doc: e.doc, revision: e.revision, feedback: e.feedback }
+  return { doc: e.doc, revision: e.revision, feedback: e.feedback, reopened: await reopenedAnswers(e, e.revision) }
 }
 
 // The doc as the human saw it when they sent a round, so the round is read

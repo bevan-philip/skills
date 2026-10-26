@@ -397,6 +397,18 @@ export type FeedbackFile = z.infer<typeof feedbackFile>
 // Thrown when the human approves a revision older than the current doc.
 export const STALE_REVISION = 'STALE_REVISION'
 
+// An answer the human sent on a decision that the agent has since changed.
+// The answer was given to a question that no longer exists, so it stops
+// counting and the decision is asked again; the page keeps it as history.
+export type Reopened = {
+  item: string // the choice's feedback item id
+  round: number
+  answer: string // what they picked, labelled as it was when they picked it
+  note?: string
+  revision: number // the revision in which the agent changed the decision
+  reason?: string // the decision's changeNote in that revision
+}
+
 export type BoardView = {
   id: string
   doc: Board | null
@@ -405,6 +417,8 @@ export type BoardView = {
   updatedAt: string
   baseline: Board | null
   feedback: FeedbackFile
+  // Reopened answers by decision id, oldest first.
+  reopened: Record<string, Reopened[]>
   listening: boolean
 }
 

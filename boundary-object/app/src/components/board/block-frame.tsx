@@ -9,7 +9,7 @@ import { Markdown } from '@/components/board/markdown'
 import { BlockThreads, Composer } from '@/components/board/threads'
 import { useBoard } from '@/components/board/context'
 import { blockMeta } from '@/components/board/block-meta'
-import { threadsFor } from '@/lib/state'
+import { pendingReopen, threadsFor } from '@/lib/state'
 import { cn } from '@/lib/utils'
 
 export function BlockFrame({
@@ -25,12 +25,14 @@ export function BlockFrame({
   toolbar?: React.ReactNode
   children: React.ReactNode
 }) {
-  const { changes, diff, state, addComment } = useBoard()
+  const { changes, diff, state, sent, view, addComment } = useBoard()
   const [open, setOpen] = React.useState(!block.collapsed)
   const [composing, setComposing] = React.useState(false)
   const meta = blockMeta(block)
   const Icon = meta.icon
   const change = changes[block.id]
+  // A reopened decision shows its change note where the human's answer was.
+  const reopenedHere = block.type === 'decision' && pendingReopen(block, view.reopened, sent) !== null
   const ref = React.useRef<HTMLDivElement>(null)
   const threads = threadsFor(state, block.id).length
 
@@ -72,7 +74,7 @@ export function BlockFrame({
             {change === 'changed' && <Mark tone="changed">updated</Mark>}
           </div>
           {block.note && <Markdown className="mt-0.5 text-muted-foreground" body={block.note} />}
-          {change && block.changeNote && (
+          {change && block.changeNote && !reopenedHere && (
             <div
               className={cn(
                 'mt-2 flex gap-2 rounded-md border-l-2 px-2.5 py-1.5 text-[13px]',

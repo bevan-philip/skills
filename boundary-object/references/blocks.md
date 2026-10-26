@@ -63,6 +63,8 @@ One choice among options. Mark at most one option `recommended`. With `allowOthe
 
 Instead of picking, the human can answer **Find out first** (you try the options for real and ask again) or **Your call** (you decide). See "Acting on feedback" in SKILL.md.
 
+Once the human has answered, the decision shows as decided. Changing its `question`, or an option's `label`, `summary`, `pros` or `cons`, reopens it and asks again, with the old answer kept as a history line; `check` requires a `changeNote` saying why. `evidence`, `metrics`, `context` and `recommended` can change without reopening it.
+
 | Field | |
 | --- | --- |
 | `reversible` | `true` shows "easy to change later", `false` shows "hard to undo". Set it so the human knows where their attention matters. |
