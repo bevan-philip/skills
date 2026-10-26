@@ -47,7 +47,12 @@ function ChoiceStatus({ block }: { block: BlockOf<'decision'> }) {
     c?.option ? (block.options.find((o) => o.id === c.option)?.label ?? c.option) : c?.other ? 'your own answer' : ''
   if (!current) return null
   if (current.round !== null) {
-    return answered(current) ? <span className="text-[11px] text-muted-foreground">Sent in round {current.round}</span> : null
+    if (answered(current, block)) return <span className="text-[11px] text-muted-foreground">Sent in round {current.round}</span>
+    return current.option ? (
+      <span className="text-[11px] text-muted-foreground">
+        The agent removed the option you picked in round {current.round}. Pick again.
+      </span>
+    ) : null
   }
   if (!answered(current)) {
     return before ? (
@@ -167,7 +172,7 @@ export function DecisionView({ block }: { block: BlockOf<'decision'> }) {
             None of these — suggest something else
           </Button>
         ))}
-      {current && answered(current) && (
+      {current && answered(current, block) && (
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">Why, or any constraints (optional)</span>
           <AnswerText

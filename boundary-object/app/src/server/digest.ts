@@ -238,7 +238,7 @@ export function renderState(doc: Board | null, fb: FeedbackFile, revision: numbe
   for (const b of doc.blocks) {
     if (b.type === 'decision') {
       const c = s.choices.get(b.id)
-      const ans = c && answered(c) ? (c.option ? itemName(b, c.option) : `own answer ${q(c.other ?? '')}`) : 'unanswered'
+      const ans = c && answered(c, b) ? (c.option ? itemName(b, c.option) : `own answer ${q(c.other ?? '')}`) : 'unanswered'
       out.push(`- ${blockName(b, b.id)} → ${ans}${c?.note ? `; note ${q(c.note)}` : ''}`)
     }
     if (b.type === 'question') {
