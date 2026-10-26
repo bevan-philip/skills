@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { Block, Board, FeedbackFile, FeedbackItem, Round, Target } from '@/lib/schema'
-import { effectiveState, openAsks, viewSteps } from '@/lib/state'
+import { answered, effectiveState, openAsks, viewSteps } from '@/lib/state'
 
 // Renders one round of human feedback as plain text for the agent. Every
 // line carries the ids the agent needs to act on it, and labels resolved
@@ -112,6 +112,10 @@ export function renderDigest(
     out.push('', '## Decisions')
     for (const c of choices) {
       const b = blk(c.block)
+      if (!answered(c)) {
+        out.push(`- ${blockName(b, c.block)} → cleared their earlier answer (now unanswered)`)
+        continue
+      }
       const picked = c.option
         ? itemName(b, c.option)
         : `their own answer: ${q(c.other ?? '')}`
@@ -234,7 +238,7 @@ export function renderState(doc: Board | null, fb: FeedbackFile, revision: numbe
   for (const b of doc.blocks) {
     if (b.type === 'decision') {
       const c = s.choices.get(b.id)
-      const ans = c ? (c.option ? itemName(b, c.option) : `own answer ${q(c.other ?? '')}`) : 'unanswered'
+      const ans = c && answered(c) ? (c.option ? itemName(b, c.option) : `own answer ${q(c.other ?? '')}`) : 'unanswered'
       out.push(`- ${blockName(b, b.id)} → ${ans}${c?.note ? `; note ${q(c.note)}` : ''}`)
     }
     if (b.type === 'question') {

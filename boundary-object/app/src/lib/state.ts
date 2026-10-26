@@ -149,11 +149,15 @@ export function threadsFor(s: EffectiveState, block: string): Thread[] {
   return roots.map((root) => ({ root, followups: s.comments.filter((c) => c.replyTo === root.id) }))
 }
 
+// A choice counts only if it names an option or a non-blank answer of the
+// human's own; clearing "something else" leaves an empty one behind.
+export const answered = (c?: { option?: string; other?: string }) => Boolean(c && (c.option || c.other?.trim()))
+
 // Blocks that ask the human for something and have no answer yet.
 export function openAsks(doc: Board, s: EffectiveState): string[] {
   const open: string[] = []
   for (const b of doc.blocks) {
-    if (b.type === 'decision' && !s.choices.has(b.id)) open.push(b.id)
+    if (b.type === 'decision' && !answered(s.choices.get(b.id))) open.push(b.id)
     if (b.type === 'question' && !s.answers.get(b.id)?.text.trim()) open.push(b.id)
     if (b.type === 'confirm' && b.items.some((it) => !s.confirms.has(key(b.id, it.id)))) open.push(b.id)
   }

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { Block, Board, BoardView, Draft, FeedbackItem, Target, Verdict } from '@/lib/schema'
-import { effectiveState, key, viewSteps, type EffectiveState } from '@/lib/state'
+import { answered, effectiveState, key, viewSteps, type EffectiveState } from '@/lib/state'
 import { putDraft, sendRound } from '@/lib/api'
 import { newId } from '@/lib/utils'
 
@@ -166,7 +166,9 @@ export function BoardProvider({
       removeDraft: (id) => mutate((items) => items.filter((i) => i.id !== id)),
       choose: (block, c) => {
         const prev = submittedState.choices.get(block)
-        if (prev && prev.option === c.option && prev.other === c.other && (prev.note ?? '') === (c.note ?? '')) {
+        // Clearing a choice that was never sent is no change at all.
+        const noop = !answered(c) && !answered(prev)
+        if (noop || (prev && prev.option === c.option && prev.other === c.other && (prev.note ?? '') === (c.note ?? ''))) {
           mutate((items) => items.filter((i) => !(i.type === 'choice' && i.block === block)))
         } else put({ id: newId(), type: 'choice', block, ...c })
       },

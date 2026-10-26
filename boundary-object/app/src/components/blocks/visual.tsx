@@ -6,6 +6,7 @@ import { assetUrl, useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { Composer, pinNumbers } from '@/components/board/threads'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
 // ---- Pointing: click a spot on a visual to attach a comment to it ----
@@ -52,19 +53,16 @@ function Pins({ block, pending, onCancel, onSave }: {
           </a>
         ))}
       {pending && (
-        <>
-          <span
-            className="absolute z-20 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-human shadow-md"
-            style={{ left: `${pending.x * 100}%`, top: `${pending.y * 100}%` }}
-          />
-          <div
-            className="absolute z-30 w-72 rounded-lg border bg-popover p-3 shadow-lg"
-            style={{
-              left: `min(max(0px, calc(${pending.x * 100}% - 9rem)), calc(100% - 18rem))`,
-              top: `calc(${pending.y * 100}% + 14px)`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+        // Portalled and collision-aware, so a pin near the bottom or edge of
+        // a visual doesn't leave the composer clipped by the card.
+        <Popover open onOpenChange={(open) => !open && onCancel()}>
+          <PopoverAnchor asChild>
+            <span
+              className="absolute z-20 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-human shadow-md"
+              style={{ left: `${pending.x * 100}%`, top: `${pending.y * 100}%` }}
+            />
+          </PopoverAnchor>
+          <PopoverContent className="w-72" onClick={(e) => e.stopPropagation()}>
             {pending.extra?.label && (
               <div className="mb-2 truncate text-xs text-muted-foreground">
                 On <span className="font-medium text-foreground">{pending.extra.label}</span>
@@ -76,8 +74,8 @@ function Pins({ block, pending, onCancel, onSave }: {
               </div>
             )}
             <Composer placeholder="What about this spot?" onSubmit={onSave} onCancel={onCancel} />
-          </div>
-        </>
+          </PopoverContent>
+        </Popover>
       )}
     </>
   )
