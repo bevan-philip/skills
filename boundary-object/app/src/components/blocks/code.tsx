@@ -10,25 +10,38 @@ import { cn } from '@/lib/utils'
 
 type Line = { text: string; kind: 'add' | 'del' | 'ctx' | 'hunk'; n?: number }
 
+// File headers (`--- a/x`, `+++ b/x`, `index …`) only appear before a hunk;
+// inside one, a line like `--- old comment` is a removed `-- old comment`.
+const FILE_HEADER = /^(diff --git |index |--- |\+\+\+ |new file mode|deleted file mode|old mode|new mode|similarity index|rename from|rename to|Binary files)/
+
 function parseDiff(diff: string): Line[] {
-  let oldN = 0
-  let newN = 0
-  return diff
-    .replace(/\n$/, '')
-    .split('\n')
-    .filter((l) => !/^(diff --git|index |--- |\+\+\+ )/.test(l))
-    .map((l) => {
-      const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l)
-      if (h) {
-        oldN = Number(h[1])
-        newN = Number(h[2])
-        return { text: l, kind: 'hunk' }
-      }
-      if (l.startsWith('+')) return { text: l.slice(1), kind: 'add', n: newN++ }
-      if (l.startsWith('-')) return { text: l.slice(1), kind: 'del', n: oldN++ }
+  let oldN = 1
+  let newN = 1
+  let inHunk = false
+  const out: Line[] = []
+  for (const l of diff.replace(/\n$/, '').split('\n')) {
+    if (l.startsWith('diff --git ')) {
+      inHunk = false
+      continue
+    }
+    const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l)
+    if (h) {
+      oldN = Number(h[1])
+      newN = Number(h[2])
+      inHunk = true
+      out.push({ text: l, kind: 'hunk' })
+      continue
+    }
+    if (!inHunk && FILE_HEADER.test(l)) continue
+    if (l.startsWith('\\')) continue // "\ No newline at end of file"
+    if (l.startsWith('+')) out.push({ text: l.slice(1), kind: 'add', n: newN++ })
+    else if (l.startsWith('-')) out.push({ text: l.slice(1), kind: 'del', n: oldN++ })
+    else {
       oldN++
-      return { text: l.slice(1), kind: 'ctx', n: newN++ }
-    })
+      out.push({ text: l.slice(1), kind: 'ctx', n: newN++ })
+    }
+  }
+  return out
 }
 
 function Lines({

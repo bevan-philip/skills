@@ -17,6 +17,7 @@ import { Route as ApiBoardsIndexRouteImport } from './routes/api/boards/index'
 import { Route as ApiBoardsIdIndexRouteImport } from './routes/api/boards/$id/index'
 import { Route as ApiBoardsIdCheckRouteImport } from './routes/api/boards/$id/check'
 import { Route as ApiBoardsIdDigestRouteImport } from './routes/api/boards/$id/digest'
+import { Route as ApiBoardsIdDraftRouteImport } from './routes/api/boards/$id/draft'
 import { Route as ApiBoardsIdEventsRouteImport } from './routes/api/boards/$id/events'
 import { Route as ApiBoardsIdWaitRouteImport } from './routes/api/boards/$id/wait'
 import { Route as ApiBoardsIdFileSplatRouteImport } from './routes/api/boards/$id/file/$'
@@ -61,6 +62,11 @@ const ApiBoardsIdDigestRoute = ApiBoardsIdDigestRouteImport.update({
   path: '/api/boards/$id/digest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBoardsIdDraftRoute = ApiBoardsIdDraftRouteImport.update({
+  id: '/api/boards/$id/draft',
+  path: '/api/boards/$id/draft',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBoardsIdEventsRoute = ApiBoardsIdEventsRouteImport.update({
   id: '/api/boards/$id/events',
   path: '/api/boards/$id/events',
@@ -85,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/api/boards/': typeof ApiBoardsIndexRoute
   '/api/boards/$id/check': typeof ApiBoardsIdCheckRoute
   '/api/boards/$id/digest': typeof ApiBoardsIdDigestRoute
+  '/api/boards/$id/draft': typeof ApiBoardsIdDraftRoute
   '/api/boards/$id/events': typeof ApiBoardsIdEventsRoute
   '/api/boards/$id/wait': typeof ApiBoardsIdWaitRoute
   '/api/boards/$id/': typeof ApiBoardsIdIndexRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/api/boards': typeof ApiBoardsIndexRoute
   '/api/boards/$id/check': typeof ApiBoardsIdCheckRoute
   '/api/boards/$id/digest': typeof ApiBoardsIdDigestRoute
+  '/api/boards/$id/draft': typeof ApiBoardsIdDraftRoute
   '/api/boards/$id/events': typeof ApiBoardsIdEventsRoute
   '/api/boards/$id/wait': typeof ApiBoardsIdWaitRoute
   '/api/boards/$id': typeof ApiBoardsIdIndexRoute
@@ -112,6 +120,7 @@ export interface FileRoutesById {
   '/api/boards/': typeof ApiBoardsIndexRoute
   '/api/boards/$id/check': typeof ApiBoardsIdCheckRoute
   '/api/boards/$id/digest': typeof ApiBoardsIdDigestRoute
+  '/api/boards/$id/draft': typeof ApiBoardsIdDraftRoute
   '/api/boards/$id/events': typeof ApiBoardsIdEventsRoute
   '/api/boards/$id/wait': typeof ApiBoardsIdWaitRoute
   '/api/boards/$id/': typeof ApiBoardsIdIndexRoute
@@ -127,6 +136,7 @@ export interface FileRouteTypes {
     | '/api/boards/'
     | '/api/boards/$id/check'
     | '/api/boards/$id/digest'
+    | '/api/boards/$id/draft'
     | '/api/boards/$id/events'
     | '/api/boards/$id/wait'
     | '/api/boards/$id/'
@@ -140,6 +150,7 @@ export interface FileRouteTypes {
     | '/api/boards'
     | '/api/boards/$id/check'
     | '/api/boards/$id/digest'
+    | '/api/boards/$id/draft'
     | '/api/boards/$id/events'
     | '/api/boards/$id/wait'
     | '/api/boards/$id'
@@ -153,6 +164,7 @@ export interface FileRouteTypes {
     | '/api/boards/'
     | '/api/boards/$id/check'
     | '/api/boards/$id/digest'
+    | '/api/boards/$id/draft'
     | '/api/boards/$id/events'
     | '/api/boards/$id/wait'
     | '/api/boards/$id/'
@@ -167,6 +179,7 @@ export interface RootRouteChildren {
   ApiBoardsIndexRoute: typeof ApiBoardsIndexRoute
   ApiBoardsIdCheckRoute: typeof ApiBoardsIdCheckRoute
   ApiBoardsIdDigestRoute: typeof ApiBoardsIdDigestRoute
+  ApiBoardsIdDraftRoute: typeof ApiBoardsIdDraftRoute
   ApiBoardsIdEventsRoute: typeof ApiBoardsIdEventsRoute
   ApiBoardsIdWaitRoute: typeof ApiBoardsIdWaitRoute
   ApiBoardsIdIndexRoute: typeof ApiBoardsIdIndexRoute
@@ -231,6 +244,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBoardsIdDigestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/boards/$id/draft': {
+      id: '/api/boards/$id/draft'
+      path: '/api/boards/$id/draft'
+      fullPath: '/api/boards/$id/draft'
+      preLoaderRoute: typeof ApiBoardsIdDraftRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/boards/$id/events': {
       id: '/api/boards/$id/events'
       path: '/api/boards/$id/events'
@@ -263,6 +283,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiBoardsIndexRoute: ApiBoardsIndexRoute,
   ApiBoardsIdCheckRoute: ApiBoardsIdCheckRoute,
   ApiBoardsIdDigestRoute: ApiBoardsIdDigestRoute,
+  ApiBoardsIdDraftRoute: ApiBoardsIdDraftRoute,
   ApiBoardsIdEventsRoute: ApiBoardsIdEventsRoute,
   ApiBoardsIdWaitRoute: ApiBoardsIdWaitRoute,
   ApiBoardsIdIndexRoute: ApiBoardsIdIndexRoute,
