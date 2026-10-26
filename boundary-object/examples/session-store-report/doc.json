@@ -1,0 +1,88 @@
+{
+  "title": "Sessions now live in Postgres",
+  "kind": "report",
+  "summary": "Sessions are stored in a Postgres `sessions` table with a 14-day expiry, so deploys no longer log anyone out and both replicas see the same logins. Everything in the plan is done except the sliding refresh, which we agreed to drop. **Please try the three checks below on staging** before I open the PR.",
+  "status": "Implementation done and tests pass. Waiting for your checks.",
+  "blocks": [
+    { "id": "outcome", "type": "section", "title": "What I built" },
+    {
+      "id": "plan",
+      "type": "steps",
+      "title": "Plan vs. what happened",
+      "editable": false,
+      "items": [
+        { "id": "iface", "title": "Add SessionStore interface (no in-memory impl; use the test DB)", "status": "done", "files": ["src/sessions/store.ts"] },
+        { "id": "callers", "title": "Route the auth middleware and login/logout through SessionStore", "status": "done", "files": ["src/middleware/auth.ts", "src/routes/auth.ts"] },
+        { "id": "backend", "title": "Implement the Postgres store", "status": "done", "files": ["src/sessions/pg.ts", "migrations/0042_sessions.sql"] },
+        { "id": "dual-read", "title": "Dual-read the old in-memory sessions for 24h after deploy", "status": "changed", "note": "Also copies a session to Postgres the first time it is read, so the old Map empties itself well before the 24 hours are up.", "files": ["src/sessions/legacy.ts"] },
+        { "id": "tests", "title": "Integration test: log in on replica A, request on replica B", "status": "done", "files": ["test/sessions.int.test.ts"] },
+        { "id": "ui", "title": "Session list and remote sign-out", "status": "done", "files": ["src/routes/account.ts", "web/settings/Sessions.tsx"] }
+      ]
+    },
+    {
+      "id": "settings-shot",
+      "type": "image",
+      "title": "Account settings, before and after",
+      "note": "Use **Point** to pin a comment on the screenshot.",
+      "src": "assets/after.png",
+      "before": "assets/before.png",
+      "caption": "Staging, signed in as a test user with three sessions. The destructive button now asks for confirmation."
+    },
+    {
+      "id": "architecture",
+      "type": "diagram",
+      "title": "Where sessions are read and written now",
+      "direction": "LR",
+      "collapsed": true,
+      "groups": [{ "id": "api", "label": "API process (×2)" }],
+      "nodes": [
+        { "id": "mw", "label": "auth middleware", "kind": "function", "group": "api", "status": "changed" },
+        { "id": "store", "label": "PgSessionStore", "kind": "service", "group": "api", "status": "added" },
+        { "id": "legacy", "label": "legacy Map (24h)", "kind": "store", "group": "api", "status": "changed", "detail": "Read-only. Removed by a follow-up once the 24 hours have passed." },
+        { "id": "db", "label": "sessions table", "kind": "db", "status": "added" }
+      ],
+      "edges": [
+        { "from": "mw", "to": "store", "status": "added" },
+        { "from": "store", "to": "db", "status": "added" },
+        { "from": "mw", "to": "legacy", "label": "fallback", "dashed": true }
+      ]
+    },
+    { "id": "review", "type": "section", "title": "What to look at" },
+    {
+      "id": "changes",
+      "type": "files",
+      "title": "Files changed",
+      "note": "Diffs are trimmed to the parts worth reading.",
+      "items": [
+        {
+          "path": "src/middleware/auth.ts",
+          "change": "modified",
+          "summary": "Reads from the store, then falls back to the legacy Map and copies the session over on a hit.",
+          "diff": "@@ -8,9 +8,14 @@ export async function auth(req, res, next) {\n   const id = req.cookies.sid\n   if (!id) return unauthorized(res)\n-  const session = sessions.get(id)\n-  if (!session || session.expires < Date.now()) return unauthorized(res)\n+  let session = await store.get(id)\n+  if (!session) {\n+    session = legacy.get(id)\n+    if (session) await store.put(id, session)\n+  }\n+  if (!session || session.expiresAt < new Date()) return unauthorized(res)\n   req.user = session.user\n   next()\n }"
+        },
+        { "path": "src/sessions/pg.ts", "change": "added", "summary": "Postgres implementation of `SessionStore`, with an hourly sweep of expired rows." },
+        { "path": "migrations/0042_sessions.sql", "change": "added", "summary": "The table from the plan, plus the `expires_at > created_at` check you asked for." },
+        { "path": "src/sessions/legacy.ts", "change": "renamed", "from": "src/sessions.ts", "summary": "The old in-memory Map, now read-only." },
+        { "path": "web/settings/Sessions.tsx", "change": "added", "summary": "Session list with per-device and \"everywhere else\" sign-out." }
+      ]
+    },
+    {
+      "id": "verify",
+      "type": "confirm",
+      "title": "Please check on staging",
+      "note": "Mark each one once you've tried it.",
+      "items": [
+        { "id": "deploy", "text": "Sign in, redeploy staging, refresh: you are still signed in." },
+        { "id": "replica", "text": "Sign in, then hit `/me` a few times: it never returns 401.", "detail": "The load balancer alternates replicas, so this checks both." },
+        { "id": "revoke", "text": "Sign in on two browsers, then sign out the other one from Settings: its next request gets the login page." }
+      ]
+    },
+    {
+      "id": "followups",
+      "type": "callout",
+      "tone": "info",
+      "title": "Follow-ups (not in this change)",
+      "body": "- Delete `src/sessions/legacy.ts` one day after this ships.\n- Sliding refresh, if session lengths in the metrics show it's needed."
+    }
+  ]
+}

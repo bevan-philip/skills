@@ -1,0 +1,186 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin '@tailwindcss/typography';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.985 0.002 247);
+  --foreground: oklch(0.18 0.01 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.01 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.01 260);
+  --primary: oklch(0.22 0.01 260);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.96 0.004 260);
+  --secondary-foreground: oklch(0.22 0.01 260);
+  --muted: oklch(0.96 0.004 260);
+  --muted-foreground: oklch(0.52 0.015 260);
+  --accent: oklch(0.955 0.006 260);
+  --accent-foreground: oklch(0.22 0.01 260);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.915 0.006 260);
+  --input: oklch(0.9 0.006 260);
+  --ring: oklch(0.65 0.12 255);
+
+  /* Human-authored marks (your comments, choices, edits) use one hue so you can
+     tell your contributions from the agent's at a glance. */
+  --human: oklch(0.55 0.19 258);
+  --human-soft: oklch(0.95 0.035 258);
+  --added: oklch(0.6 0.15 155);
+  --added-soft: oklch(0.95 0.045 155);
+  --changed: oklch(0.7 0.15 70);
+  --changed-soft: oklch(0.96 0.05 85);
+  --removed: oklch(0.6 0.2 25);
+  --removed-soft: oklch(0.95 0.035 25);
+}
+
+.dark {
+  --background: oklch(0.16 0.008 260);
+  --foreground: oklch(0.95 0.004 260);
+  --card: oklch(0.2 0.009 260);
+  --card-foreground: oklch(0.95 0.004 260);
+  --popover: oklch(0.22 0.009 260);
+  --popover-foreground: oklch(0.95 0.004 260);
+  --primary: oklch(0.93 0.004 260);
+  --primary-foreground: oklch(0.2 0.01 260);
+  --secondary: oklch(0.27 0.01 260);
+  --secondary-foreground: oklch(0.95 0.004 260);
+  --muted: oklch(0.26 0.01 260);
+  --muted-foreground: oklch(0.7 0.012 260);
+  --accent: oklch(0.28 0.012 260);
+  --accent-foreground: oklch(0.95 0.004 260);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.6 0.12 255);
+
+  --human: oklch(0.72 0.15 258);
+  --human-soft: oklch(0.3 0.06 258);
+  --added: oklch(0.72 0.14 155);
+  --added-soft: oklch(0.29 0.05 155);
+  --changed: oklch(0.8 0.13 80);
+  --changed-soft: oklch(0.31 0.05 80);
+  --removed: oklch(0.7 0.17 25);
+  --removed-soft: oklch(0.3 0.06 25);
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Inter, Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-human: var(--human);
+  --color-human-soft: var(--human-soft);
+  --color-added: var(--added);
+  --color-added-soft: var(--added-soft);
+  --color-changed: var(--changed);
+  --color-changed-soft: var(--changed-soft);
+  --color-removed: var(--removed);
+  --color-removed-soft: var(--removed-soft);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-padding-top: 5rem;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+}
+
+/* Markdown written by the agent. */
+.md {
+  @apply prose prose-sm max-w-none dark:prose-invert;
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-links: var(--human);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-invert-body: var(--foreground);
+  --tw-prose-invert-headings: var(--foreground);
+  --tw-prose-invert-code: var(--foreground);
+  line-height: 1.65;
+}
+.md :where(code):not(:where(pre *)) {
+  @apply rounded bg-muted px-1 py-0.5 font-normal;
+}
+.md :where(code):not(:where(pre *))::before,
+.md :where(code):not(:where(pre *))::after {
+  content: none;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md-lg {
+  @apply prose-base;
+}
+
+/* React Flow, themed to match. */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-label-background-color: var(--card);
+  --xy-edge-label-color: var(--muted-foreground);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-attribution-background-color: transparent;
+}
+.react-flow__edge-textbg {
+  fill: var(--card);
+}
+.react-flow__edge-text {
+  fill: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.mermaid-host svg {
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.mermaid-host .node {
+  cursor: pointer;
+}
+
+@keyframes flash {
+  from {
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--changed) 60%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.flash {
+  animation: flash 1.6s ease-out;
+}

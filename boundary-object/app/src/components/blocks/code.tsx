@@ -1,0 +1,186 @@
+import * as React from 'react'
+import { ChevronRight } from 'lucide-react'
+import type { BlockOf } from '@/lib/schema'
+import { threadsFor } from '@/lib/state'
+import { useBoard } from '@/components/board/context'
+import { Markdown } from '@/components/board/markdown'
+import { ItemComment } from '@/components/board/threads'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+
+type Line = { text: string; kind: 'add' | 'del' | 'ctx' | 'hunk'; n?: number }
+
+function parseDiff(diff: string): Line[] {
+  let oldN = 0
+  let newN = 0
+  return diff
+    .replace(/\n$/, '')
+    .split('\n')
+    .filter((l) => !/^(diff --git|index |--- |\+\+\+ )/.test(l))
+    .map((l) => {
+      const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l)
+      if (h) {
+        oldN = Number(h[1])
+        newN = Number(h[2])
+        return { text: l, kind: 'hunk' }
+      }
+      if (l.startsWith('+')) return { text: l.slice(1), kind: 'add', n: newN++ }
+      if (l.startsWith('-')) return { text: l.slice(1), kind: 'del', n: oldN++ }
+      oldN++
+      return { text: l.slice(1), kind: 'ctx', n: newN++ }
+    })
+}
+
+function Lines({
+  block,
+  item,
+  label,
+  lines,
+  highlight,
+}: {
+  block: string
+  item?: string
+  label: string
+  lines: Line[]
+  highlight?: Set<number>
+}) {
+  const { state } = useBoard()
+  const commented = new Set(
+    threadsFor(state, block)
+      .filter((t) => t.root.target.item === item && t.root.target.line !== undefined)
+      .map((t) => t.root.target.line),
+  )
+  return (
+    <div className="overflow-x-auto rounded-md border bg-background font-mono text-[12.5px] leading-[1.6]">
+      <table className="w-full border-collapse">
+        <tbody>
+          {lines.map((l, i) =>
+            l.kind === 'hunk' ? (
+              <tr key={i} className="bg-muted/60 text-muted-foreground">
+                <td colSpan={3} className="px-3 py-0.5 text-[11px]">
+                  {l.text}
+                </td>
+              </tr>
+            ) : (
+              <tr
+                key={i}
+                className={cn(
+                  'group',
+                  l.kind === 'add' && 'bg-added-soft/60',
+                  l.kind === 'del' && 'bg-removed-soft/60',
+                  l.n !== undefined && highlight?.has(l.n) && 'bg-changed-soft/70',
+                )}
+              >
+                <td className="w-10 px-2 text-right align-top text-muted-foreground/70 select-none">
+                  {l.kind === 'del' ? '' : l.n}
+                </td>
+                <td className="w-full px-2 align-top whitespace-pre">
+                  <span className={cn('mr-2 select-none', l.kind === 'ctx' && 'invisible')}>
+                    {l.kind === 'add' ? '+' : l.kind === 'del' ? '−' : ' '}
+                  </span>
+                  {l.text || ' '}
+                </td>
+                <td className="w-8 pr-1 align-top">
+                  {l.n !== undefined && (
+                    <ItemComment
+                      block={block}
+                      item={item}
+                      label={`${label}:${l.n}${l.kind === 'del' ? ' (removed line)' : ''}`}
+                      extra={{ line: l.n, quote: l.text.trim().slice(0, 200) }}
+                      className={cn('h-5', commented.has(l.n) && 'opacity-100')}
+                    />
+                  )}
+                </td>
+              </tr>
+            ),
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const changeBadge = {
+  added: { short: 'A', variant: 'added' as const },
+  modified: { short: 'M', variant: 'changed' as const },
+  deleted: { short: 'D', variant: 'removed' as const },
+  renamed: { short: 'R', variant: 'secondary' as const },
+}
+
+export function FilesView({ block }: { block: BlockOf<'files'> }) {
+  const [open, setOpen] = React.useState<Set<string>>(new Set())
+  return (
+    <ul className="flex flex-col divide-y rounded-lg border">
+      {block.items.map((f) => {
+        const b = changeBadge[f.change]
+        const expanded = open.has(f.path)
+        const stats = f.diff ? parseDiff(f.diff) : []
+        const adds = stats.filter((l) => l.kind === 'add').length
+        const dels = stats.filter((l) => l.kind === 'del').length
+        return (
+          <li key={f.path} className="group flex flex-col gap-2 px-3.5 py-3" data-quote-item={f.path}>
+            <div className="flex items-start gap-2.5">
+              <Badge variant={b.variant} className="mt-0.5 w-5 font-mono" title={f.change}>
+                {b.short}
+              </Badge>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 font-mono text-[13px]">
+                  {f.from && <span className="text-muted-foreground line-through">{f.from}</span>}
+                  {f.from && <span className="text-muted-foreground">→</span>}
+                  <span className="font-medium break-all">{f.path}</span>
+                  {f.diff && (
+                    <span className="text-[11px]">
+                      <span className="text-added">+{adds}</span> <span className="text-removed">−{dels}</span>
+                    </span>
+                  )}
+                </div>
+                {f.summary && <Markdown className="mt-1 text-muted-foreground" body={f.summary} />}
+                {f.diff && (
+                  <button
+                    className="mt-1.5 flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() =>
+                      setOpen((o) => {
+                        const n = new Set(o)
+                        if (n.has(f.path)) n.delete(f.path)
+                        else n.add(f.path)
+                        return n
+                      })
+                    }
+                  >
+                    <ChevronRight className={cn('size-3.5 transition-transform', expanded && 'rotate-90')} />
+                    {expanded ? 'Hide diff' : 'Show diff'}
+                  </button>
+                )}
+              </div>
+              <ItemComment block={block.id} item={f.path} label={f.path} />
+            </div>
+            {expanded && f.diff && <Lines block={block.id} item={f.path} label={f.path} lines={stats} />}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+export function CodeView({ block }: { block: BlockOf<'code'> }) {
+  const lines: Line[] = block.code
+    .replace(/\n$/, '')
+    .split('\n')
+    .map((text, i) => ({ text, kind: 'ctx', n: block.startLine + i }))
+  return (
+    <div className="flex flex-col gap-1.5">
+      {(block.path || block.language) && (
+        <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+          {block.path && <span>{block.path}</span>}
+          {block.language && <Badge variant="outline">{block.language}</Badge>}
+        </div>
+      )}
+      <Lines
+        block={block.id}
+        label={block.path ?? block.title ?? 'code'}
+        lines={lines}
+        highlight={new Set(block.highlight ?? [])}
+      />
+    </div>
+  )
+}

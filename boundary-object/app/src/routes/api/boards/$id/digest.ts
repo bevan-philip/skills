@@ -1,0 +1,24 @@
+import { createFileRoute } from '@tanstack/react-router'
+import path from 'node:path'
+import { boardExists, docFor, getRound, rootDir } from '@/server/store'
+import { renderDigest, renderState } from '@/server/digest'
+
+// `?state=1` prints the standing answers across all rounds; otherwise the
+// digest of `?round=N` (default: latest).
+export const Route = createFileRoute('/api/boards/$id/digest')({
+  server: {
+    handlers: {
+      GET: async ({ request, params }) => {
+        if (!boardExists(params.id)) return new Response('no such board\n', { status: 404 })
+        const url = new URL(request.url)
+        const { doc, revision, feedback } = await docFor(params.id)
+        if (url.searchParams.get('state')) return new Response(renderState(doc, feedback, revision) + '\n')
+        const n = Number(url.searchParams.get('round')) || undefined
+        const { round } = await getRound(params.id, n)
+        if (!round) return new Response('No feedback rounds yet.\n')
+        const opts = { boardId: params.id, boardDir: path.join(rootDir(), params.id), revision }
+        return new Response(renderDigest(doc, feedback, round, opts) + '\n')
+      },
+    },
+  },
+})

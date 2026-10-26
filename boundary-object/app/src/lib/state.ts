@@ -1,0 +1,158 @@
+import type { Board, BlockOf, FeedbackFile, FeedbackItem, Round } from './schema'
+
+// Folds every submitted round plus the unsent draft into "what the human
+// currently thinks". Later entries win. `from` records where each answer came
+// from so the page can say "you answered this in round 2".
+
+export type Origin = { round: number | null } // null = draft
+
+type With<T> = T & Origin
+
+export type Comment = With<Extract<FeedbackItem, { type: 'comment' }>>
+
+export type EffectiveState = {
+  choices: Map<string, With<Extract<FeedbackItem, { type: 'choice' }>>>
+  answers: Map<string, With<Extract<FeedbackItem, { type: 'answer' }>>>
+  confirms: Map<string, With<Extract<FeedbackItem, { type: 'confirm' }>>>
+  strikes: Map<string, With<Extract<FeedbackItem, { type: 'step-strike' }>>>
+  edits: Map<string, With<Extract<FeedbackItem, { type: 'step-edit' }>>>
+  adds: Map<string, With<Extract<FeedbackItem, { type: 'step-add' }>>[]>
+  orders: Map<string, With<Extract<FeedbackItem, { type: 'step-order' }>>>
+  comments: Comment[]
+}
+
+export const key = (block: string, item?: string) => (item ? `${block}/${item}` : block)
+
+export function effectiveState(fb: FeedbackFile, revision: number): EffectiveState {
+  const s: EffectiveState = {
+    choices: new Map(),
+    answers: new Map(),
+    confirms: new Map(),
+    strikes: new Map(),
+    edits: new Map(),
+    adds: new Map(),
+    orders: new Map(),
+    comments: [],
+  }
+  const apply = (items: FeedbackItem[], round: Round | null) => {
+    // Plan edits (strike/edit/add/order) are proposals to the agent. Once the
+    // agent has revised the doc after receiving them, its doc is the truth and
+    // the overlay is dropped; answers and comments stay visible.
+    const planEditsLive = round === null || round.revision >= revision
+    const origin = { round: round ? round.n : null }
+    for (const it of items) {
+      switch (it.type) {
+        case 'comment':
+          s.comments.push({ ...it, ...origin })
+          break
+        case 'choice':
+          s.choices.set(it.block, { ...it, ...origin })
+          break
+        case 'answer':
+          s.answers.set(it.block, { ...it, ...origin })
+          break
+        case 'confirm':
+          s.confirms.set(key(it.block, it.item), { ...it, ...origin })
+          break
+        case 'step-strike':
+          if (planEditsLive) s.strikes.set(key(it.block, it.item), { ...it, ...origin })
+          break
+        case 'step-edit':
+          if (planEditsLive) s.edits.set(key(it.block, it.item), { ...it, ...origin })
+          break
+        case 'step-add':
+          if (planEditsLive) s.adds.set(it.block, [...(s.adds.get(it.block) ?? []), { ...it, ...origin }])
+          break
+        case 'step-order':
+          if (planEditsLive) s.orders.set(it.block, { ...it, ...origin })
+          break
+      }
+    }
+  }
+  for (const r of fb.rounds) apply(r.items, r)
+  apply(fb.draft.items, null)
+  return s
+}
+
+export type ViewStep = {
+  id: string
+  title: string
+  originalTitle?: string
+  detail?: string
+  files?: string[]
+  status?: BlockOf<'steps'>['items'][number]['status']
+  note?: string
+  struck: boolean
+  strikeReason?: string
+  addedByHuman: boolean
+  origin?: Origin
+}
+
+// The plan as the human currently sees it: agent steps + human additions,
+// in the human's order, with strikes and renames overlaid.
+export function viewSteps(blk: BlockOf<'steps'>, s: EffectiveState): ViewStep[] {
+  const base: ViewStep[] = blk.items.map((it) => {
+    const strike = s.strikes.get(key(blk.id, it.id))
+    const edit = s.edits.get(key(blk.id, it.id))
+    return {
+      id: it.id,
+      title: edit ? edit.title : it.title,
+      originalTitle: edit ? it.title : undefined,
+      detail: it.detail,
+      files: it.files,
+      status: it.status,
+      note: it.note,
+      struck: strike?.struck ?? false,
+      strikeReason: strike?.struck ? strike.reason : undefined,
+      addedByHuman: false,
+    }
+  })
+  const known = new Set(base.map((b) => b.id))
+  const list = [...base]
+  for (const add of s.adds.get(blk.id) ?? []) {
+    // The agent adopts a human-added step by reusing its id.
+    if (known.has(add.id)) continue
+    const strike = s.strikes.get(key(blk.id, add.id))
+    const step: ViewStep = {
+      id: add.id,
+      title: s.edits.get(key(blk.id, add.id))?.title ?? add.title,
+      struck: strike?.struck ?? false,
+      addedByHuman: true,
+      origin: { round: add.round },
+    }
+    const at = add.after === null ? -1 : list.findIndex((x) => x.id === add.after)
+    list.splice(at + 1, 0, step)
+    known.add(add.id)
+  }
+  const order = s.orders.get(blk.id)?.order
+  if (!order) return list
+  const rank = new Map(order.map((id, i) => [id, i]))
+  return list
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => (rank.get(a.x.id) ?? 1e6 + a.i) - (rank.get(b.x.id) ?? 1e6 + b.i))
+    .map(({ x }) => x)
+}
+
+export type Thread = { root: Comment; followups: Comment[] }
+
+export function threadsFor(s: EffectiveState, block: string): Thread[] {
+  const roots = s.comments.filter((c) => c.target.block === block && !c.replyTo)
+  return roots.map((root) => ({ root, followups: s.comments.filter((c) => c.replyTo === root.id) }))
+}
+
+// Blocks that ask the human for something and have no answer yet.
+export function openAsks(doc: Board, s: EffectiveState): string[] {
+  const open: string[] = []
+  for (const b of doc.blocks) {
+    if (b.type === 'decision' && !s.choices.has(b.id)) open.push(b.id)
+    if (b.type === 'question' && !s.answers.get(b.id)?.text.trim()) open.push(b.id)
+    if (b.type === 'confirm' && b.items.some((it) => !s.confirms.has(key(b.id, it.id)))) open.push(b.id)
+  }
+  // An agent reply marked "question" stays open until the human follows up.
+  s.comments.forEach((c, i) => {
+    if (doc.replies[c.id]?.status !== 'question') return
+    const thread = c.replyTo ?? c.id
+    if (!s.comments.slice(i + 1).some((f) => f.replyTo === thread)) open.push(c.target.block)
+  })
+  return [...new Set(open)]
+}
