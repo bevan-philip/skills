@@ -16,6 +16,7 @@ import {
   type FeedbackFile,
   type Round,
   type Verdict,
+  STALE_REVISION,
 } from '@/lib/schema'
 
 // One server per project. Boards live in BOUNDARY_ROOT/<id>/:
@@ -39,6 +40,7 @@ type Entry = {
   watcher?: fs.FSWatcher
   reloadTimer?: ReturnType<typeof setTimeout>
   lock: Promise<unknown>
+  docLock: Promise<unknown>
 }
 
 type Hub = {
@@ -240,6 +242,7 @@ async function load(id: string, dir: string): Promise<Entry> {
     updatedAt: new Date().toISOString(),
     feedback: { draft: { items: [] }, rounds: [] },
     lock: Promise.resolve(),
+    docLock: Promise.resolve(),
   }
   const parsed = feedbackSchema.safeParse(await readJson(path.join(dir, 'feedback.json'), {}))
   if (parsed.success) e.feedback = parsed.data
@@ -252,13 +255,26 @@ async function load(id: string, dir: string): Promise<Entry> {
       if (file !== 'doc.json') return
       clearTimeout(e.reloadTimer)
       // Editors and agents often write in two steps; wait for the file to settle.
-      e.reloadTimer = setTimeout(async () => {
-        if (await reload(e)) emit(id, 'doc', { revision: e.revision })
-        emit('*', 'boards', null)
-      }, 120)
+      e.reloadTimer = setTimeout(() => void refresh(e), 120)
     })
   } catch {}
   return e
+}
+
+// Re-read doc.json and tell open pages when it changed. Every reload after
+// the first goes through here (the watcher, `check`, a submission), so
+// whichever reload notices a change is the one that announces it.
+function refresh(e: Entry): Promise<boolean> {
+  const run = () => reload(e)
+  const next = e.docLock.then(run, run)
+  e.docLock = next.catch(() => {})
+  return next.then((changed) => {
+    if (changed) {
+      emit(e.id, 'doc', { revision: e.revision })
+      emit('*', 'boards', null)
+    }
+    return changed
+  })
 }
 
 // Serialise read-modify-write on feedback.json per board.
@@ -330,7 +346,7 @@ export async function listBoards(): Promise<BoardSummary[]> {
 
 export async function check(id: string) {
   const e = await entry(id)
-  await reload(e)
+  await refresh(e)
   return { ok: e.error === null, error: e.error, revision: e.revision, blocks: e.doc?.blocks.length ?? 0 }
 }
 
@@ -344,14 +360,24 @@ export async function saveDraft(id: string, input: Draft) {
   })
 }
 
-export async function submit(id: string, input: { verdict: Verdict; overall?: string; draft: Draft }) {
+// `revision` is the one the human was looking at. Comments and answers about
+// an older revision are still worth delivering, so they are recorded against
+// it; an approval is not, because it would approve changes nobody saw.
+export async function submit(
+  id: string,
+  input: { verdict: Verdict; overall?: string; draft: Draft; revision: number },
+) {
   const e = await entry(id)
   const d = draftSchema.parse(input.draft)
+  // Pick up an agent edit the watcher hasn't reloaded yet.
+  await refresh(e)
   const round = await locked(e, async () => {
+    const reviewed = Math.min(input.revision, e.revision)
+    if (input.verdict === 'approve' && reviewed < e.revision) throw new Error(STALE_REVISION)
     const r: Round = {
       n: (e.feedback.rounds.at(-1)?.n ?? 0) + 1,
       at: new Date().toISOString(),
-      revision: e.revision,
+      revision: reviewed,
       verdict: input.verdict,
       overall: input.overall?.trim() || undefined,
       items: d.items,

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { Block, Board, FeedbackFile, FeedbackItem, Round, Target } from '@/lib/schema'
-import { effectiveState, openAsks } from '@/lib/state'
+import { effectiveState, openAsks, viewSteps } from '@/lib/state'
 
 // Renders one round of human feedback as plain text for the agent. Every
 // line carries the ids the agent needs to act on it, and labels resolved
@@ -153,11 +153,19 @@ export function renderDigest(
       }
       if (i.type === 'step-edit') out.push(`- ${where} rename ${itemName(b, i.item)} → ${q(i.title)}`)
       if (i.type === 'step-add') {
-        const reordered = edits.some((e) => e.type === 'step-order' && e.block === i.block)
-        const after = reordered ? '(position: see new order)' : i.after ? `after [${i.after}]` : 'at the start'
+        const after = i.after ? `after [${i.after}]` : 'at the start'
         out.push(`- ${where} ADD step [${i.id}] ${q(i.title)} ${after} (reuse id "${i.id}" if you adopt it)`)
       }
-      if (i.type === 'step-order') out.push(`- ${where} new order: ${i.order.join(', ')}`)
+    }
+    // Insertions and reorders interact, so state the order the human ended up
+    // with, worked out exactly as the page lays it out.
+    const moved = new Set(edits.filter((i) => i.type === 'step-order' || i.type === 'step-add').map((i) => i.block))
+    for (const id of moved) {
+      const b = blk(id)
+      if (b?.type !== 'steps') continue
+      const steps = viewSteps(b, effectiveState({ draft: { items: round.items }, rounds: [] }, opts.revision))
+      const order = steps.map((x) => (x.struck ? `${x.id} (removed)` : x.id)).join(', ')
+      out.push(`- in ${blockName(b, id)}: resulting order: ${order}`)
     }
   }
 

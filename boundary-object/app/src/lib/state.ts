@@ -108,29 +108,38 @@ export function viewSteps(blk: BlockOf<'steps'>, s: EffectiveState): ViewStep[] 
     }
   })
   const known = new Set(base.map((b) => b.id))
-  const list = [...base]
+  const adds: ViewStep[] = []
+  const anchors = new Map<string, string | null>()
   for (const add of s.adds.get(blk.id) ?? []) {
     // The agent adopts a human-added step by reusing its id.
     if (known.has(add.id)) continue
+    known.add(add.id)
     const strike = s.strikes.get(key(blk.id, add.id))
-    const step: ViewStep = {
+    adds.push({
       id: add.id,
       title: s.edits.get(key(blk.id, add.id))?.title ?? add.title,
       struck: strike?.struck ?? false,
       addedByHuman: true,
       origin: { round: add.round },
-    }
-    const at = add.after === null ? -1 : list.findIndex((x) => x.id === add.after)
-    list.splice(at + 1, 0, step)
-    known.add(add.id)
+    })
+    anchors.set(add.id, add.after)
   }
+  // Steps the human's saved order mentions go in that order; steps it doesn't
+  // (inserted after the last reorder) go straight after the step they were
+  // inserted after, so a reorder never sends a later insertion to the end.
   const order = s.orders.get(blk.id)?.order
-  if (!order) return list
-  const rank = new Map(order.map((id, i) => [id, i]))
-  return list
+  const rank = new Map((order ?? []).map((id, i) => [id, i]))
+  const list = [...base, ...adds.filter((a) => rank.has(a.id))]
     .map((x, i) => ({ x, i }))
     .sort((a, b) => (rank.get(a.x.id) ?? 1e6 + a.i) - (rank.get(b.x.id) ?? 1e6 + b.i))
     .map(({ x }) => x)
+  for (const add of adds) {
+    if (rank.has(add.id)) continue
+    const after = anchors.get(add.id) ?? null
+    const anchor = after === null ? -1 : list.findIndex((x) => x.id === after)
+    list.splice(after === null ? 0 : anchor === -1 ? list.length : anchor + 1, 0, add)
+  }
+  return list
 }
 
 export type Thread = { root: Comment; followups: Comment[] }

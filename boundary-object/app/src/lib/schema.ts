@@ -337,6 +337,9 @@ export type Round = z.infer<typeof round>
 export type Verdict = z.infer<typeof verdict>
 export type FeedbackFile = z.infer<typeof feedbackFile>
 
+// Thrown when the human approves a revision older than the current doc.
+export const STALE_REVISION = 'STALE_REVISION'
+
 export type BlockChange = 'new' | 'changed'
 
 export type BoardView = {

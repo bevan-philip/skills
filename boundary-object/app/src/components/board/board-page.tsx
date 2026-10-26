@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ArrowLeftRight, Bot, Check, CheckCircle2, CircleDot, MessageSquare, Send } from 'lucide-react'
-import type { Board, BoardView, FeedbackItem, Verdict } from '@/lib/schema'
+import { STALE_REVISION, type Board, type BoardView, type FeedbackItem, type Verdict } from '@/lib/schema'
 import { openAsks, threadsFor } from '@/lib/state'
 import { BoardProvider, useBoard } from '@/components/board/context'
 import { BlockView } from '@/components/board/blocks'
@@ -268,7 +268,7 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
   const [verdict, setVerdict] = React.useState<Verdict | null>(null)
   const [overall, setOverall] = React.useState('')
   const [sending, setSending] = React.useState(false)
-  const [failed, setFailed] = React.useState(false)
+  const [failure, setFailure] = React.useState<string | null>(null)
   const options: { value: Verdict; title: string; body: string }[] =
     doc.kind === 'plan'
       ? [
@@ -341,11 +341,7 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
           ))}
         </div>
         <Textarea placeholder="Anything else the agent should know? (optional)" value={overall} onChange={(e) => setOverall(e.target.value)} />
-        {failed && (
-          <p className="text-[13px] text-removed">
-            Couldn’t reach the board server, so nothing was sent. Your feedback is still here as a draft; try again.
-          </p>
-        )}
+        {failure && <p className="text-[13px] text-removed">{failure}</p>}
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Keep editing
@@ -357,13 +353,17 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
               if (!verdict) return
               setSending(true)
               try {
-                setFailed(false)
+                setFailure(null)
                 await submit(verdict, overall)
                 setOverall('')
                 setVerdict(null)
                 onOpenChange(false)
-              } catch {
-                setFailed(true)
+              } catch (e) {
+                setFailure(
+                  e instanceof Error && e.message.includes(STALE_REVISION)
+                    ? 'The agent changed the board while you were reviewing it, so nothing was sent. Look over the blocks marked updated or new, then approve again.'
+                    : 'Couldn’t reach the board server, so nothing was sent. Your feedback is still here as a draft; try again.',
+                )
               } finally {
                 setSending(false)
               }

@@ -193,10 +193,12 @@ export function BoardProvider({
         pendingSave.current = undefined
         try {
           await inflight.current.catch(() => {})
-          await sendRound({ data: { id: view.id, verdict, overall, draft } })
+          await sendRound({ data: { id: view.id, verdict, overall, draft, revision: view.revision } })
         } catch (e) {
-          // The round wasn't recorded; make sure the draft we held back is saved.
+          // The round wasn't recorded; make sure the draft we held back is saved,
+          // and fetch the board in case it moved on underneath the human.
           inflight.current = putDraft({ data: { id: view.id, draft } }).catch(() => {})
+          onSubmitted()
           throw e
         } finally {
           submitting.current = false

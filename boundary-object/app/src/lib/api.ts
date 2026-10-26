@@ -14,5 +14,5 @@ export const putDraft = createServerFn({ method: 'POST' })
   .handler(({ data }) => saveDraft(data.id, data.draft))
 
 export const sendRound = createServerFn({ method: 'POST' })
-  .validator(z.object({ id: z.string(), verdict, overall: z.string().optional(), draft }))
+  .validator(z.object({ id: z.string(), verdict, overall: z.string().optional(), draft, revision: z.number().int() }))
   .handler(({ data }) => submit(data.id, data))
