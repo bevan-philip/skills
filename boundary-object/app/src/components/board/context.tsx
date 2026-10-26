@@ -101,29 +101,19 @@ export function BoardProvider({
     [view.id],
   )
 
-  // An edit still waiting for its autosave must survive the board going away:
-  // on in-app navigation the provider unmounts, so save it then; when the tab
-  // closes or reloads, hand it to the browser as a beacon.
+  // Leaving the board (in-app navigation unmounts this provider) must not
+  // cancel an edit still waiting for its autosave; save it on the way out.
   const draftRef = React.useRef(draft)
   draftRef.current = draft
-  React.useEffect(() => {
-    const takePending = () => {
-      if (!pendingSave.current || submitting.current) return false
+  React.useEffect(
+    () => () => {
+      if (!pendingSave.current || submitting.current) return
       clearTimeout(pendingSave.current)
       pendingSave.current = undefined
-      return true
-    }
-    const onPageHide = () => {
-      if (!takePending()) return
-      const body = new Blob([JSON.stringify(draftRef.current)], { type: 'application/json' })
-      navigator.sendBeacon(`/api/boards/${view.id}/draft`, body)
-    }
-    addEventListener('pagehide', onPageHide)
-    return () => {
-      removeEventListener('pagehide', onPageHide)
-      if (takePending()) save(draftRef.current).catch(() => {})
-    }
-  }, [view.id, save])
+      save(draftRef.current).catch(() => {})
+    },
+    [save],
+  )
 
   React.useEffect(() => {
     if (!dirty.current || submitting.current) return
