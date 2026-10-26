@@ -6,7 +6,6 @@ import { assetUrl, useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { Composer, pinNumbers } from '@/components/board/threads'
 import { Button } from '@/components/ui/button'
-import { useTheme } from '@/components/board/theme'
 import { cn } from '@/lib/utils'
 
 // ---- Pointing: click a spot on a visual to attach a comment to it ----
@@ -105,46 +104,46 @@ function relative(e: React.MouseEvent, el: HTMLElement) {
   return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }
 }
 
-// ---- Mermaid ----
+// ---- Mermaid, rendered by Pele (https://pele.run) ----
 
-let mermaidSeq = 0
+function describePeleError(e: unknown) {
+  const err = e as { message?: string; line?: number; column?: number }
+  const at = err.line ? ` (line ${err.line}${err.column ? `, column ${err.column}` : ''})` : ''
+  return `${err.message ?? String(e)}${at}`
+}
 
 export function MermaidView({ block, point }: { block: BlockOf<'mermaid'>; point: ReturnType<typeof usePointing> }) {
-  const theme = useTheme()
-  const [svg, setSvg] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [ready, setReady] = React.useState(false)
   const host = React.useRef<HTMLDivElement>(null)
+  const target = React.useRef<HTMLDivElement>(null)
 
+  // Pele owns this element's children: it sizes the layout to the container,
+  // reads fonts from CSS and re-lays out on resize. Colours come from the
+  // --pele-* variables in styles.css, so theme switches need no re-render.
   React.useEffect(() => {
     let live = true
-    import('mermaid')
-      .then(async ({ default: mermaid }) => {
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: 'strict',
-          theme: theme === 'dark' ? 'dark' : 'neutral',
-          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+    let mounted: { destroy(): void } | undefined
+    import('pele/lazy')
+      .then(async ({ mountAsync }) => {
+        if (!live || !target.current) return
+        const m = await mountAsync(target.current, block.code, {
+          idPrefix: `d-${block.id.replace(/[^\w-]/g, '_')}-`,
+          onRender: () => live && setError(null),
+          onError: (e) => live && setError(describePeleError(e)),
         })
-        const out = await mermaid.render(`mmd-${block.id.replace(/[^\w-]/g, '_')}-${++mermaidSeq}`, block.code)
-        if (live) {
-          setSvg(out.svg)
-          setError(null)
-        }
+        if (!live) return m.destroy()
+        mounted = m
+        setError(m.error ? describePeleError(m.error) : null)
+        setReady(true)
       })
-      .catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)))
+      .catch((e: unknown) => live && setError(describePeleError(e)))
     return () => {
       live = false
+      mounted?.destroy()
     }
-  }, [block.code, block.id, theme])
+  }, [block.code, block.id])
 
-  if (error) {
-    return (
-      <div className="rounded-md border border-removed/40 bg-removed-soft/40 p-3 font-mono text-xs whitespace-pre-wrap">
-        Mermaid could not render this diagram:{'\n'}
-        {error}
-      </div>
-    )
-  }
   return (
     <div
       ref={host}
@@ -152,16 +151,18 @@ export function MermaidView({ block, point }: { block: BlockOf<'mermaid'>; point
       onClick={(e) => {
         if (!point.on || !host.current) return
         const t = e.target as Element
-        const hit = t.closest('g.node, g.cluster, .actor, .messageText, .note, text')
+        const hit = t.closest('.pele-node, .pele-cluster, .pele-note, .pele-edge-label, .pele-label, text')
         const label = hit?.textContent?.trim().replace(/\s+/g, ' ').slice(0, 80)
         point.place({ ...relative(e, host.current), extra: label ? { label } : undefined })
       }}
     >
-      {svg ? (
-        <div className="mermaid-host" dangerouslySetInnerHTML={{ __html: svg }} />
-      ) : (
-        <div className="h-40 animate-pulse rounded bg-muted" />
+      {error && (
+        <div className="mb-3 rounded-md border border-removed/40 bg-removed-soft/40 p-3 font-mono text-xs whitespace-pre-wrap">
+          This diagram could not be rendered: {error}
+        </div>
       )}
+      {!ready && !error && <div className="h-40 animate-pulse rounded bg-muted" />}
+      <div ref={target} className="pele-host" />
       <Pins block={block.id} pending={point.pending} onCancel={point.cancel} onSave={point.save} />
     </div>
   )

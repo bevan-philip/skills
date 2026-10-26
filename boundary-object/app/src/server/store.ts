@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { render as renderMermaid } from 'pele'
 import {
   board as boardSchema,
   draft as draftSchema,
@@ -111,7 +112,27 @@ export function parseDoc(text: string): { doc: Board | null; error: string | nul
   }
   const r = boardSchema.safeParse(raw)
   if (!r.success) return { doc: null, error: describeError(raw, r.error), raw }
+  const diagramErrors = mermaidErrors(r.data)
+  if (diagramErrors) return { doc: null, error: diagramErrors, raw }
   return { doc: r.data, error: null, raw }
+}
+
+// Pele renders synchronously and needs no DOM, so a diagram that won't render
+// is caught here, by `boundary check`, before the human ever sees it.
+function mermaidErrors(doc: Board): string | null {
+  const out: string[] = []
+  doc.blocks.forEach((b, i) => {
+    if (b.type !== 'mermaid') return
+    try {
+      renderMermaid(b.code)
+    } catch (e) {
+      const err = e as { message?: string; line?: number; column?: number }
+      const at = err.line ? `line ${err.line}${err.column ? `, column ${err.column}` : ''}: ` : ''
+      const msg = (err.message ?? String(e)).replace(/\s*\n+\s*/g, ' ').trim()
+      out.push(`- blocks.${i}(${b.id}).code: ${at}${msg}`)
+    }
+  })
+  return out.length ? out.join('\n') : null
 }
 
 async function readJson<T>(file: string, fallback: T): Promise<T> {

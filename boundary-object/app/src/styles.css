@@ -164,12 +164,28 @@
   font-size: 11px;
 }
 
-.mermaid-host svg {
-  max-width: 100%;
-  height: auto;
+/* Mermaid diagrams, drawn by Pele and themed with the page's tokens. */
+.pele-host {
+  --pele-bg: var(--background);
+  --pele-fg: var(--foreground);
+  --pele-muted: var(--muted-foreground);
+  --pele-line: var(--muted-foreground);
+  --pele-surface: var(--card);
+  --pele-surface-alt: var(--muted);
+  --pele-border: var(--border);
+  --pele-accent: var(--human);
+  --pele-font: var(--font-sans);
+  --pele-radius: 6px;
+}
+.pele-host svg {
   margin: 0 auto;
 }
-.mermaid-host .node {
+.pele-host .pele-error {
+  display: none;
+}
+.pele-host .pele-node,
+.pele-host .pele-cluster,
+.pele-host .pele-note {
   cursor: pointer;
 }
 

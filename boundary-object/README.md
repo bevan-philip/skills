@@ -33,7 +33,7 @@ This copies the two example boards (a plan and a report) into `.boundary/` and o
 | `references/blocks.md` | Every block type with a JSON example, and the digest format. |
 | `scripts/boundary.mjs` | Dependency-free CLI: `new`, `open`, `check`, `wait`, `feedback`, `list`, `stop`, `demo`. |
 | `examples/` | A plan that uses every block type, and a report with before/after screenshots. |
-| `app/` | TanStack Start + React + Tailwind v4 + shadcn/ui components (Radix). Diagrams use React Flow with dagre layout; Mermaid loads only when a board uses it. |
+| `app/` | TanStack Start + React + Tailwind v4 + shadcn/ui components (Radix). Diagrams use React Flow with dagre layout. Mermaid syntax is drawn by [Pele](https://pele.run), which loads only the diagram types a board uses and is themed by the page's CSS variables. |
 | `app/src/lib/schema.ts` | The board and feedback schemas (zod), shared by the page, the server and `check`. |
 | `app/src/server/digest.ts` | Turns a round of feedback into the text the agent reads. |
 

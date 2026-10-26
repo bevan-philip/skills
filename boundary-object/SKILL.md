@@ -95,5 +95,5 @@ A report answers "did we get what we agreed?" Use the same building blocks:
 ## Practical notes
 
 - Escape carefully: `doc.json` is JSON, so quotes and newlines inside `html`, `code` and `diff` strings must be escaped. For large mockups, write an HTML file into `assets/` and use `"src": "assets/mockup.html"` instead.
-- Mermaid errors show on the page and the rest of the board still renders. Run `check` anyway, since it catches schema errors.
+- `check` renders every `mermaid` block (with [Pele](https://pele.run)) and reports syntax errors with a line and column, so a broken diagram never reaches the human.
 - The server binds to 127.0.0.1. In a remote or headless environment, give the human the URL and say they need a port-forward to reach it.

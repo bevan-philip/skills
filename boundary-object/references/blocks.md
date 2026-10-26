@@ -127,7 +127,7 @@ Boxes and arrows, laid out automatically (dagre). `direction` is `LR` (default) 
 ```
 
 ### `mermaid`
-Any Mermaid diagram. Sequence diagrams are the main use: anything that happens over time between parties. The human comments by pointing: they click **Point**, then a spot on the diagram, and the digest gives you the label of what they clicked.
+Any Mermaid diagram (Mermaid 12.1 syntax). Sequence diagrams are the main use: anything that happens over time between parties. Diagrams are drawn by [Pele](https://pele.run), which uses its own layout, so the result can differ slightly from what mermaid.js would draw. `check` renders every diagram and rejects one with a syntax error, giving you the line and column. The human comments by pointing: they click **Point**, then a spot on the diagram, and the digest gives you the label of what they clicked.
 ```json
 { "id": "login-flow", "type": "mermaid", "title": "Login", "code": "sequenceDiagram\n  Browser->>API: POST /login\n  API-->>Browser: Set-Cookie" }
 ```
