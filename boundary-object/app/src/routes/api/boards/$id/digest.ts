@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import path from 'node:path'
-import { boardExists, docFor, getRound, rootDir } from '@/server/store'
+import { boardExists, docFor, getRound, reviewedDoc, rootDir } from '@/server/store'
 import { renderDigest, renderState } from '@/server/digest'
 
 // `?state=1` prints the standing answers across all rounds; otherwise the
@@ -17,7 +17,7 @@ export const Route = createFileRoute('/api/boards/$id/digest')({
         const { round } = await getRound(params.id, n)
         if (!round) return new Response('No feedback rounds yet.\n')
         const opts = { boardId: params.id, boardDir: path.join(rootDir(), params.id), revision }
-        return new Response(renderDigest(doc, feedback, round, opts) + '\n')
+        return new Response(renderDigest(await reviewedDoc(params.id, round.revision), feedback, round, opts) + '\n')
       },
     },
   },

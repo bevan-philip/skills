@@ -444,6 +444,13 @@ export async function docFor(id: string) {
   return { doc: e.doc, revision: e.revision, feedback: e.feedback }
 }
 
+// The doc as the human saw it when they sent a round, so the round is read
+// against the labels and order they actually reviewed.
+export async function reviewedDoc(id: string, revision: number) {
+  const e = await entry(id)
+  return (await snapshotAt(e, revision)) ?? e.doc
+}
+
 // Files referenced by the doc must sit inside the board directory.
 export function resolveAsset(id: string, rel: string): string | null {
   if (!SLUG.test(id)) return null

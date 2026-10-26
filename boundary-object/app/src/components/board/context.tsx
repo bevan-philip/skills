@@ -161,8 +161,10 @@ export function BoardProvider({
           mutate((items) => items.filter((i) => i.id !== item && !('item' in i && i.item === item)))
           return
         }
+        // A new reason on a removal already sent is still news for the agent.
         const prev = submittedState.strikes.get(key(block, item))
-        if ((prev?.struck ?? false) === struck) {
+        const same = (prev?.struck ?? false) === struck && (!struck || (prev?.reason ?? '') === (reason ?? ''))
+        if (same) {
           mutate((items) => items.filter((i) => !(i.type === 'step-strike' && i.block === block && i.item === item)))
         } else put({ id: newId(), type: 'step-strike', block, item, struck, reason })
       },

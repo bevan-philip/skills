@@ -83,6 +83,8 @@ const verdictLine: Record<Round['verdict'], Record<Board['kind'], string>> = {
   },
 }
 
+// `doc` is the snapshot the human reviewed (round.revision); opts.revision is
+// the doc's current revision, used only to say the doc has moved on since.
 export function renderDigest(
   doc: Board | null,
   fb: FeedbackFile,
@@ -94,6 +96,9 @@ export function renderDigest(
   const of = <T extends FeedbackItem['type']>(t: T) =>
     round.items.filter((i): i is Extract<FeedbackItem, { type: T }> => i.type === t)
   const blk = (id: string) => doc.blocks.find((b) => b.id === id)
+  // What the page showed when the human sent this round: every round up to
+  // this one still live at the revision they reviewed, and no unsent draft.
+  const sent = effectiveState({ draft: { items: [] }, rounds: fb.rounds.filter((r) => r.n <= round.n) }, round.revision)
 
   out.push(`# Round ${round.n} on board "${opts.boardId}" — ${label(doc.title)}`)
   out.push(
@@ -165,14 +170,12 @@ export function renderDigest(
       }
     }
     // Insertions and reorders interact, so state the order the human ended up
-    // with, worked out exactly as the page laid it out when they sent it: every
-    // round up to this one that was still live at the revision they reviewed.
+    // with, worked out exactly as the page laid it out when they sent it.
     const moved = new Set(edits.filter((i) => i.type === 'step-order' || i.type === 'step-add').map((i) => i.block))
     for (const id of moved) {
       const b = blk(id)
       if (b?.type !== 'steps') continue
-      const sent = { draft: { items: [] }, rounds: fb.rounds.filter((r) => r.n <= round.n) }
-      const steps = viewSteps(b, effectiveState(sent, round.revision))
+      const steps = viewSteps(b, sent)
       const order = steps.map((x) => (x.struck ? `${x.id} (removed)` : x.id)).join(', ')
       out.push(`- in ${blockName(b, id)}: resulting order: ${order}`)
     }
@@ -202,7 +205,7 @@ export function renderDigest(
 
   if (!round.items.length && !round.overall) out.push('', '(No individual items in this round.)')
 
-  const still = openAsks(doc, effectiveState(fb, opts.revision))
+  const still = openAsks(doc, sent)
   if (still.length && round.verdict !== 'approve') {
     out.push('', `Still unanswered on the board: ${still.map((id) => `[${id}]`).join(', ')}.`)
   } else if (still.length) {
