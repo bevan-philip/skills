@@ -462,7 +462,7 @@ function Shell() {
       <Header onSend={() => setSending(true)} />
       <div className="mx-auto grid max-w-[1400px] gap-10 px-4 xl:grid-cols-[220px_minmax(0,820px)_220px] xl:justify-center">
         <Outline asks={askSet} />
-        <main className="flex min-w-0 flex-col gap-5 pt-6">
+        <main className="flex min-w-0 flex-col gap-5 pt-6 wrap-anywhere [&_button]:wrap-normal [&_table]:wrap-normal">
           <Hero asks={asks} />
           {doc.blocks.map((b) => (
             <BlockView key={b.id} block={b} needsInput={askSet.has(b.id)} />

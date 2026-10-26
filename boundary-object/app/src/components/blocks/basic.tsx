@@ -40,14 +40,22 @@ export function CalloutView({ block }: { block: BlockOf<'callout'> }) {
 
 // Where the human's choice stands: sent, or a draft that changes what was sent.
 function ChoiceStatus({ block }: { block: BlockOf<'decision'> }) {
-  const { state, sent } = useBoard()
+  const { state, sent, diff } = useBoard()
   const current = state.choices.get(block.id)
   const before = sent.choices.get(block.id)
   const name = (c?: { option?: string; other?: string }) =>
     c?.option ? (block.options.find((o) => o.id === c.option)?.label ?? c.option) : c?.other ? 'your own answer' : ''
   if (!current) return null
   if (current.round !== null) {
-    if (answered(current, block)) return <span className="text-[11px] text-muted-foreground">Sent in round {current.round}</span>
+    if (answered(current, block)) {
+      const updated = current.option && diff.items[block.id]?.[current.option] === 'changed'
+      return (
+        <span className="text-[11px] text-muted-foreground">
+          Sent in round {current.round}
+          {updated && '. The agent has since updated the option you picked; check it matches what you asked for.'}
+        </span>
+      )
+    }
     return current.option ? (
       <span className="text-[11px] text-muted-foreground">
         The agent removed the option you picked in round {current.round}. Pick again.
@@ -174,9 +182,9 @@ export function DecisionView({ block }: { block: BlockOf<'decision'> }) {
         ))}
       {current && answered(current, block) && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground">Why, or any constraints (optional)</span>
+          <span className="text-xs font-medium text-muted-foreground">Why, or anything to change about it (optional)</span>
           <AnswerText
-            label="why"
+            label="note"
             value={current.note ?? ''}
             sent={before?.note ? { text: before.note, round: before.round! } : undefined}
             placeholder="e.g. we already run Postgres in prod"

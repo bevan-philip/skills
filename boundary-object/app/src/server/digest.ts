@@ -216,6 +216,7 @@ export function renderDigest(
     out.push('', `Left unanswered (use your recommendation): ${still.map((id) => `[${id}]`).join(', ')}.`)
   }
 
+  const qualified = choices.some((c) => c.option && c.note)
   out.push(
     '',
     '## How to respond',
@@ -226,6 +227,10 @@ export function renderDigest(
         : '- Set "status" to say you are wrapping up. No need to wait again unless you change something.'
       : '- Update blocks in place and keep their ids so the human sees what changed. Set "status" to say what changed, run check, then wait again.',
   )
+  if (qualified)
+    out.push(
+      '- A decision above came with a note. If the note changes what the picked option means, rewrite that option in place (label, summary, pros, cons) so it names what you will actually build. Keep its id so the human\'s choice stays on it; don\'t add a new option for it.',
+    )
   return out.join('\n')
 }
 
