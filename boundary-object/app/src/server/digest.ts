@@ -227,7 +227,8 @@ export function renderDigest(
 
 export function renderState(doc: Board | null, fb: FeedbackFile, revision: number): string {
   if (!doc) return 'doc.json is currently invalid.'
-  const s = effectiveState(fb, revision)
+  // Only what the human has sent counts as decided; the draft is still theirs.
+  const s = effectiveState({ ...fb, draft: { items: [] } }, revision)
   const n = fb.rounds.length
   const out: string[] = [`# Current answers on ${label(doc.title)} (${n} round${n === 1 ? '' : 's'} sent)`]
   for (const b of doc.blocks) {
