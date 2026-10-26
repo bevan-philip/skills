@@ -1,8 +1,9 @@
-import type { Board, BlockOf, FeedbackFile, FeedbackItem, Round } from './schema'
+import type { Board, BlockOf, FeedbackFile, FeedbackItem, Reopened, Round } from './schema'
 
 // Folds every submitted round plus the unsent draft into "what the human
 // currently thinks". Later entries win. `from` records where each answer came
-// from so the page can say "you answered this in round 2".
+// from so the page can say "you answered this in round 2". Items in `skip`
+// (answers to decisions the agent has since reopened) don't count.
 
 export type Origin = { round: number | null } // null = draft
 
@@ -26,7 +27,7 @@ export type EffectiveState = {
 
 export const key = (block: string, item?: string) => (item ? `${block}/${item}` : block)
 
-export function effectiveState(fb: FeedbackFile, revision: number): EffectiveState {
+export function effectiveState(fb: FeedbackFile, revision: number, skip: ReadonlySet<string> = new Set()): EffectiveState {
   const s: EffectiveState = {
     choices: new Map(),
     answers: new Map(),
@@ -46,6 +47,12 @@ export function effectiveState(fb: FeedbackFile, revision: number): EffectiveSta
     const planEditsLive = round === null || round.revision >= revision
     const origin = { round: round ? round.n : null }
     for (const it of items) {
+      if (skip.has(it.id)) {
+        // A reopened answer still replaced whatever came before it, so the
+        // decision is left unanswered rather than falling back to that.
+        if (it.type === 'choice') s.choices.delete(it.block)
+        continue
+      }
       switch (it.type) {
         case 'comment':
           s.comments.push({ ...it, ...origin })
@@ -169,6 +176,42 @@ export function threadsFor(s: EffectiveState, block: string): Thread[] {
 // option the agent has since removed doesn't count either.
 export const answered = (c?: { option?: string; other?: string; defer?: string }, block?: BlockOf<'decision'>) =>
   Boolean(c && (c.defer || (c.option && (!block || block.options.some((o) => o.id === c.option))) || c.other?.trim()))
+
+// What a decision asks. An answer holds only while this stays the same: when
+// the agent rewrites the question or an option, the human answered something
+// else, so the decision reopens. Recommendations, evidence and metrics can
+// change underneath an answer without reopening it.
+export const decisionSubstance = (b: BlockOf<'decision'>) =>
+  JSON.stringify([b.question, b.options.map((o) => [o.id, o.label, o.summary ?? '', o.pros ?? [], o.cons ?? []])])
+
+// The answer ids that `effectiveState` should skip: every reopened answer, or
+// only those reopened by a given revision.
+export function reopenedItems(reopened: Record<string, Reopened[]>, upTo = Infinity): Set<string> {
+  return new Set(
+    Object.values(reopened)
+      .flat()
+      .filter((r) => r.revision <= upTo)
+      .map((r) => r.item),
+  )
+}
+
+// The latest reopening of a decision, while the human hasn't answered it again.
+export function pendingReopen(
+  block: BlockOf<'decision'>,
+  reopened: Record<string, Reopened[]>,
+  sent: EffectiveState,
+): Reopened | null {
+  const last = reopened[block.id]?.at(-1)
+  return last && !answered(sent.choices.get(block.id), block) ? last : null
+}
+
+// A label for a choice, as the decision named it.
+export function choiceLabel(c: { option?: string; other?: string; defer?: string }, block?: BlockOf<'decision'>) {
+  if (c.defer === 'explore') return 'find out first'
+  if (c.defer === 'delegate') return 'your call'
+  if (c.option) return block?.options.find((o) => o.id === c.option)?.label ?? c.option
+  return c.other ? `your own answer: ${c.other}` : ''
+}
 
 // Blocks that ask the human for something and have no answer yet.
 export function openAsks(doc: Board, s: EffectiveState): string[] {

@@ -1,6 +1,6 @@
 import path from 'node:path'
-import type { Block, Board, FeedbackFile, FeedbackItem, Round, Target } from '@/lib/schema'
-import { answered, effectiveState, openAsks, viewSteps } from '@/lib/state'
+import type { Block, Board, FeedbackFile, FeedbackItem, Reopened, Round, Target } from '@/lib/schema'
+import { answered, effectiveState, openAsks, reopenedItems, viewSteps } from '@/lib/state'
 import { edgeLabel, fromDiagram } from '@/lib/graph'
 
 // Renders one round of human feedback as plain text for the agent. Every
@@ -98,7 +98,7 @@ export function renderDigest(
   doc: Board | null,
   fb: FeedbackFile,
   round: Round,
-  opts: { boardId: string; boardDir: string; revision: number },
+  opts: { boardId: string; boardDir: string; revision: number; reopened: Record<string, Reopened[]> },
 ): string {
   if (!doc) return `Round ${round.n} arrived but doc.json is currently invalid; run check and fix it first.`
   const out: string[] = []
@@ -106,8 +106,14 @@ export function renderDigest(
     round.items.filter((i): i is Extract<FeedbackItem, { type: T }> => i.type === t)
   const blk = (id: string) => doc.blocks.find((b) => b.id === id)
   // What the page showed when the human sent this round: every round up to
-  // this one still live at the revision they reviewed, and no unsent draft.
-  const sent = effectiveState({ draft: { items: [] }, rounds: fb.rounds.filter((r) => r.n <= round.n) }, round.revision)
+  // this one still live at the revision they reviewed, no answer the agent had
+  // reopened by then, and no unsent draft.
+  const sent = effectiveState(
+    { draft: { items: [] }, rounds: fb.rounds.filter((r) => r.n <= round.n) },
+    round.revision,
+    reopenedItems(opts.reopened, round.revision),
+  )
+  const reopenedBefore = (block: string) => opts.reopened[block]?.filter((r) => r.revision <= round.revision).at(-1)
 
   out.push(`# Round ${round.n} on board "${opts.boardId}" — ${label(doc.title)}`)
   out.push(
@@ -142,6 +148,8 @@ export function renderDigest(
       const rec = b?.type === 'decision' ? b.options.find((o) => o.recommended) : undefined
       const vs = rec ? (rec.id === c.option ? ' (your recommendation)' : ` (you recommended [${rec.id}])`) : ''
       out.push(`- ${blockName(b, c.block)} → ${picked}${vs}`)
+      const again = reopenedBefore(c.block)
+      if (again) out.push(`  (answered again after you reopened it; their round ${again.round} answer was ${q(again.answer)})`)
       if (c.note) out.push(`  note: ${q(c.note)}`)
     }
   }
@@ -278,21 +286,22 @@ export function renderDigest(
     )
   if (qualified)
     out.push(
-      '- A decision above came with a note. If the note changes what the picked option means, rewrite that option in place (label, summary, pros, cons) so it names what you will actually build. Keep its id so the human\'s choice stays on it; don\'t add a new option for it.',
+      "- A decision above came with a note. If the note only adds a detail, leave the decision as it is and carry the detail into the steps. If it changes what you would build, reopen the decision: rewrite the option to describe what you'll actually build (label, summary, pros, cons), mark it `recommended`, and set `changeNote` to say why. The page moves the human's answer into the decision's history and asks again; if they approve without picking, your recommendation stands.",
     )
   return out.join('\n')
 }
 
-export function renderState(doc: Board | null, fb: FeedbackFile, revision: number): string {
+export function renderState(doc: Board | null, fb: FeedbackFile, revision: number, reopened: Record<string, Reopened[]>): string {
   if (!doc) return 'doc.json is currently invalid.'
   // Only what the human has sent counts as decided; the draft is still theirs.
-  const s = effectiveState({ ...fb, draft: { items: [] } }, revision)
+  const s = effectiveState({ ...fb, draft: { items: [] } }, revision, reopenedItems(reopened))
   const n = fb.rounds.length
   const out: string[] = [`# Current answers on ${label(doc.title)} (${n} round${n === 1 ? '' : 's'} sent)`]
   for (const b of doc.blocks) {
     if (b.type === 'decision') {
       const c = s.choices.get(b.id)
       const explored = s.explored.get(b.id)
+      const again = reopened[b.id]?.at(-1)
       const ans =
         c && answered(c, b)
           ? c.defer === 'explore'
@@ -304,7 +313,9 @@ export function renderState(doc: Board | null, fb: FeedbackFile, revision: numbe
                 : `own answer ${q(c.other ?? '')}`
           : explored
             ? `unanswered (you reported findings after they asked you to find out first in round ${explored.round})`
-            : 'unanswered'
+            : again
+              ? `unanswered (you reopened it in revision ${again.revision}; their round ${again.round} answer was ${q(again.answer)})`
+              : 'unanswered'
       out.push(`- ${blockName(b, b.id)} → ${ans}${c?.note ? `; note ${q(c.note)}` : ''}`)
     }
     if (b.type === 'question') {

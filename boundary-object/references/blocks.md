@@ -28,7 +28,7 @@
 
 | Field | |
 | --- | --- |
-| `id` | Required and unique. Letters, digits, `-`, `_`, `.`. **Keep it stable across revisions.** |
+| `id` | Required and unique. Letters, digits, `-`, `_`, `.`, and not a built-in object property name such as `constructor` or `toString`. **Keep it stable across revisions.** |
 | `type` | One of the types below. |
 | `title` | Heading of the card. Defaults to the type's name. |
 | `note` | One line of Markdown under the title, saying how to read the block. |
@@ -62,6 +62,8 @@ A heading that groups the cards after it, and the outline's grouping.
 One choice among options. Mark at most one option `recommended`. With `allowOther` (default `true`) the human can write in their own answer, and they can add a note to any choice.
 
 Instead of picking, the human can answer **Find out first** (you try the options for real and ask again) or **Your call** (you decide). See "Acting on feedback" in SKILL.md.
+
+Once the human has answered, the decision shows as decided. Changing its `question`, or an option's `label`, `summary`, `pros` or `cons`, reopens it and asks again, with the old answer kept as a history line; `check` requires a `changeNote` saying why. `evidence`, `metrics`, `context` and `recommended` can change without reopening it.
 
 | Field | |
 | --- | --- |

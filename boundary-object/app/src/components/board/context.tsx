@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { Block, Board, BoardView, Draft, FeedbackItem, Target, Verdict } from '@/lib/schema'
-import { answered, effectiveState, key, viewSteps, type EffectiveState } from '@/lib/state'
+import { answered, effectiveState, key, reopenedItems, viewSteps, type EffectiveState } from '@/lib/state'
 import { putDraft, sendRound } from '@/lib/api'
 import { diffBoards, type BoardDiff, type Change } from '@/lib/diff'
 import { newId } from '@/lib/utils'
@@ -150,16 +150,19 @@ export function BoardProvider({
     [mutate],
   )
 
+  // Answers to decisions the agent has since reopened no longer count.
+  const reopened = React.useMemo(() => reopenedItems(view.reopened), [view.reopened])
+
   // Drop a draft value when it just restates what was already sent.
   const submittedState = React.useMemo(
-    () => effectiveState({ ...view.feedback, draft: { items: [] } }, view.revision),
-    [view.feedback, view.revision],
+    () => effectiveState({ ...view.feedback, draft: { items: [] } }, view.revision, reopened),
+    [view.feedback, view.revision, reopened],
   )
 
   const diff = React.useMemo(() => diffBoards(view.baseline, view.doc), [view.baseline, view.doc])
 
   const value = React.useMemo<Ctx>(() => {
-    const state = effectiveState({ ...view.feedback, draft }, view.revision)
+    const state = effectiveState({ ...view.feedback, draft }, view.revision, reopened)
     const drafted = new Set(draft.items.map((i) => i.id))
     return {
       id: view.id,
@@ -265,7 +268,7 @@ export function BoardProvider({
         onSubmitted()
       },
     }
-  }, [view, draft, saving, live, diff, put, mutate, submittedState, onSubmitted, save])
+  }, [view, draft, saving, live, diff, put, mutate, submittedState, reopened, onSubmitted, save])
 
   return <BoardCtx.Provider value={value}>{children}</BoardCtx.Provider>
 }

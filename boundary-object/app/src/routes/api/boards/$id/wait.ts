@@ -16,11 +16,12 @@ export const Route = createFileRoute('/api/boards/$id/wait')({
         const secs = Math.min(Math.max(Number(url.searchParams.get('timeout') ?? 120), 1), 300)
         const round = await waitForRound(params.id, secs * 1000, request.signal)
         if (!round || request.signal.aborted) return new Response(null, { status: 204 })
-        const { revision, feedback } = await docFor(params.id)
+        const { revision, feedback, reopened } = await docFor(params.id)
         const digest = renderDigest(await reviewedDoc(params.id, round.revision), feedback, round, {
           boardId: params.id,
           boardDir: path.join(rootDir(), params.id),
           revision,
+          reopened,
         })
         await markDelivered(params.id, round.n)
         return Response.json({ round, digest })
