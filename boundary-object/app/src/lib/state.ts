@@ -47,7 +47,12 @@ export function effectiveState(fb: FeedbackFile, revision: number, skip: Readonl
     const planEditsLive = round === null || round.revision >= revision
     const origin = { round: round ? round.n : null }
     for (const it of items) {
-      if (skip.has(it.id)) continue
+      if (skip.has(it.id)) {
+        // A reopened answer still replaced whatever came before it, so the
+        // decision is left unanswered rather than falling back to that.
+        if (it.type === 'choice') s.choices.delete(it.block)
+        continue
+      }
       switch (it.type) {
         case 'comment':
           s.comments.push({ ...it, ...origin })
