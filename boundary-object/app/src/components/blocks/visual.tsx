@@ -171,7 +171,7 @@ export function MermaidView({ block, point }: { block: BlockOf<'mermaid'>; point
 // ---- Image (with optional before/after) ----
 
 export function ImageView({ block, point }: { block: BlockOf<'image'>; point: ReturnType<typeof usePointing> }) {
-  const { id } = useBoard()
+  const { id, view } = useBoard()
   const [side, setSide] = React.useState<'after' | 'before'>('after')
   const frame = React.useRef<HTMLDivElement>(null)
   const showing = side === 'before' && block.before ? block.before : block.src
@@ -199,7 +199,7 @@ export function ImageView({ block, point }: { block: BlockOf<'image'>; point: Re
             point.place(relative(e, frame.current))
           }}
         >
-          <img src={assetUrl(id, showing)} alt={block.alt ?? block.title ?? ''} className="block max-h-[70vh] max-w-full rounded" />
+          <img src={assetUrl(id, showing, view.revision)} alt={block.alt ?? block.title ?? ''} className="block max-h-[70vh] max-w-full rounded" />
           {side === 'after' && <Pins block={block.id} pending={point.pending} onCancel={point.cancel} onSave={point.save} />}
         </div>
       </div>
@@ -256,18 +256,19 @@ function wrap(html: string) {
 }
 
 export function MockupView({ block, point }: { block: BlockOf<'mockup'>; point: ReturnType<typeof usePointing> }) {
-  const { id } = useBoard()
+  const { id, view } = useBoard()
+  const revision = view.revision
   const frame = React.useRef<HTMLIFrameElement>(null)
   const [html, setHtml] = React.useState<string | null>(block.html ?? null)
 
   React.useEffect(() => {
     if (block.html) return setHtml(block.html)
     if (!block.src) return
-    fetch(assetUrl(id, block.src))
+    fetch(assetUrl(id, block.src, revision))
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`))))
       .then(setHtml)
       .catch(() => setHtml(`<p style="color:#b91c1c">Could not load ${block.src}</p>`))
-  }, [block.html, block.src, id])
+  }, [block.html, block.src, id, revision])
 
   React.useEffect(() => {
     frame.current?.contentWindow?.postMessage({ type: 'boundary-mode', on: point.on }, '*')

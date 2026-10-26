@@ -89,17 +89,30 @@ export function BoardProvider({
     seen.current = now
   }, [view.doc])
 
+  // Draft saves run one at a time, in the order they were made, so an older
+  // draft can never land after a newer one or after a send. `inflight` is the
+  // tail of that chain; awaiting it waits for every save already started.
+  const save = React.useCallback(
+    (d: Draft) => {
+      const next = inflight.current.catch(() => {}).then(() => putDraft({ data: { id: view.id, draft: d } }))
+      inflight.current = next
+      return next
+    },
+    [view.id],
+  )
+
   React.useEffect(() => {
     if (!dirty.current || submitting.current) return
     setSaving(true)
     const t = setTimeout(() => {
       pendingSave.current = undefined
       if (submitting.current) return
-      inflight.current = putDraft({ data: { id: view.id, draft } }).finally(() => setSaving(false))
+      const p = save(draft)
+      p.catch(() => {}).finally(() => inflight.current === p && setSaving(false))
     }, 400)
     pendingSave.current = t
     return () => clearTimeout(t)
-  }, [draft, view.id])
+  }, [draft, save])
 
   const mutate = React.useCallback((fn: (items: FeedbackItem[]) => FeedbackItem[]) => {
     dirty.current = true
@@ -190,8 +203,8 @@ export function BoardProvider({
       reorder: (block, order) => put({ id: newId(), type: 'step-order', block, order }),
       submit: async (verdict, overall) => {
         // A draft save that lands after the send would resurrect the sent
-        // items as an unsent draft, so cancel the queued save, wait out the
-        // one already running, and allow no new ones until the send settles.
+        // items as an unsent draft, so cancel the queued save, wait out every
+        // save already started, and allow no new ones until the send settles.
         submitting.current = true
         clearTimeout(pendingSave.current)
         pendingSave.current = undefined
@@ -201,7 +214,7 @@ export function BoardProvider({
         } catch (e) {
           // The round wasn't recorded; make sure the draft we held back is saved,
           // and fetch the board in case it moved on underneath the human.
-          inflight.current = putDraft({ data: { id: view.id, draft } }).catch(() => {})
+          save(draft).catch(() => {})
           onSubmitted()
           throw e
         } finally {
@@ -214,7 +227,7 @@ export function BoardProvider({
         onSubmitted()
       },
     }
-  }, [view, draft, saving, live, put, mutate, submittedState, onSubmitted])
+  }, [view, draft, saving, live, put, mutate, submittedState, onSubmitted, save])
 
   return <BoardCtx.Provider value={value}>{children}</BoardCtx.Provider>
 }
@@ -224,7 +237,10 @@ export function useOptionalBoard() {
 }
 
 // Paths in the doc are relative to the board directory unless they are URLs.
-export function assetUrl(boardId: string, src: string) {
+// The board revision is part of the URL so an asset the agent rewrote in place
+// is fetched again when the doc changes, instead of being served from memory.
+export function assetUrl(boardId: string, src: string, revision: number) {
   if (/^(https?:|data:)/.test(src)) return src
-  return `/api/boards/${boardId}/file/${src.replace(/^\.\//, '').split('/').map(encodeURIComponent).join('/')}`
+  const file = src.replace(/^\.\//, '').split('/').map(encodeURIComponent).join('/')
+  return `/api/boards/${boardId}/file/${file}?v=${revision}`
 }

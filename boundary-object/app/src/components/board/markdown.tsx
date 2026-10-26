@@ -12,7 +12,10 @@ export function Markdown({ body, className, large }: { body: string; className?:
         components={{
           a: ({ node: _n, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
           img: ({ node: _n, src, ...props }) => (
-            <img {...props} src={board && typeof src === 'string' ? assetUrl(board.id, src) : (src as string)} />
+            <img
+              {...props}
+              src={board && typeof src === 'string' ? assetUrl(board.id, src, board.view.revision) : (src as string)}
+            />
           ),
         }}
       >
