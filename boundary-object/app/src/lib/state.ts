@@ -119,6 +119,7 @@ export function viewSteps(blk: BlockOf<'steps'>, s: EffectiveState): ViewStep[] 
       id: add.id,
       title: s.edits.get(key(blk.id, add.id))?.title ?? add.title,
       struck: strike?.struck ?? false,
+      strikeReason: strike?.struck ? strike.reason : undefined,
       addedByHuman: true,
       origin: { round: add.round },
     })
