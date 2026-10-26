@@ -6,27 +6,31 @@ import { effectiveState, openAsks } from '@/lib/state'
 // line carries the ids the agent needs to act on it, and labels resolved
 // against the doc so the agent doesn't have to cross-reference.
 
-const q = (s: string) => JSON.stringify(s.length > 240 ? `${s.slice(0, 237)}...` : s)
+// Labels come from the doc the agent wrote, so shortening them loses nothing.
+// Anything the human wrote is quoted in full: it may carry the one constraint
+// that matters.
+const label = (s: string) => JSON.stringify(s.length > 240 ? `${s.slice(0, 237)}...` : s)
+const q = (s: string) => JSON.stringify(s)
 
 function blockName(b: Block | undefined, id: string) {
   if (id === 'summary') return 'the summary'
   if (!b) return `[${id}] (block no longer in doc)`
   const title = b.title ?? ('question' in b ? b.question : 'prompt' in b ? b.prompt : undefined)
-  return title ? `${b.type} [${id}] ${q(title)}` : `${b.type} [${id}]`
+  return title ? `${b.type} [${id}] ${label(title)}` : `${b.type} [${id}]`
 }
 
 function itemName(b: Block | undefined, item: string, fallback?: string) {
-  let label: string | undefined
-  if (b?.type === 'steps') label = b.items.find((x) => x.id === item)?.title
-  if (b?.type === 'confirm') label = b.items.find((x) => x.id === item)?.text
-  if (b?.type === 'decision') label = b.options.find((x) => x.id === item)?.label
-  if (b?.type === 'diagram') label = b.nodes.find((x) => x.id === item)?.label
+  let name: string | undefined
+  if (b?.type === 'steps') name = b.items.find((x) => x.id === item)?.title
+  if (b?.type === 'confirm') name = b.items.find((x) => x.id === item)?.text
+  if (b?.type === 'decision') name = b.options.find((x) => x.id === item)?.label
+  if (b?.type === 'diagram') name = b.nodes.find((x) => x.id === item)?.label
   if (b?.type === 'table') {
     const rows = b.rows.map((r, i) => (Array.isArray(r) ? { id: `row-${i + 1}`, cells: r } : r))
-    label = rows.find((r) => r.id === item)?.cells[0]
+    name = rows.find((r) => r.id === item)?.cells[0]
   }
-  if (b?.type === 'files') label = item
-  label ??= fallback
+  if (b?.type === 'files') name = item
+  name ??= fallback
   const kind =
     b?.type === 'steps'
       ? 'step'
@@ -40,7 +44,7 @@ function itemName(b: Block | undefined, item: string, fallback?: string) {
               ? 'option'
               : 'item'
   if (kind === 'file') return `file ${item}`
-  return label ? `${kind} [${item}] ${q(label)}` : `${kind} [${item}]`
+  return name ? `${kind} [${item}] ${label(name)}` : `${kind} [${item}]`
 }
 
 function describeTarget(doc: Board, t: Target, boardDir: string) {
@@ -48,12 +52,12 @@ function describeTarget(doc: Board, t: Target, boardDir: string) {
   const parts = [`on ${blockName(b, t.block)}`]
   // The label is a human-readable stand-in; skip it when something more precise follows.
   if (t.item) parts.push(itemName(b, t.item, t.label))
-  else if (t.label && !t.element && t.line === undefined) parts.push(`at ${q(t.label)}`)
+  else if (t.label && !t.element && t.line === undefined) parts.push(`at ${label(t.label)}`)
   if (t.line !== undefined) parts.push(`line ${t.line}`)
   if (t.quote) parts.push(`quoting ${q(t.quote)}`)
   if (t.element) {
     const el = t.element
-    parts.push(`element <${el.tag ?? '?'}>${el.text ? ` ${q(el.text)}` : ''} (selector: ${el.selector})`)
+    parts.push(`element <${el.tag ?? '?'}>${el.text ? ` ${label(el.text)}` : ''} (selector: ${el.selector})`)
   }
   if (t.pin && !t.element) {
     const at = `at (${Math.round(t.pin.x * 100)}% from left, ${Math.round(t.pin.y * 100)}% from top)`
@@ -91,7 +95,7 @@ export function renderDigest(
     round.items.filter((i): i is Extract<FeedbackItem, { type: T }> => i.type === t)
   const blk = (id: string) => doc.blocks.find((b) => b.id === id)
 
-  out.push(`# Round ${round.n} on board "${opts.boardId}" — ${q(doc.title)}`)
+  out.push(`# Round ${round.n} on board "${opts.boardId}" — ${label(doc.title)}`)
   out.push(
     `The human reviewed revision ${round.revision}${round.revision < opts.revision ? ` (the doc is now at ${opts.revision})` : ''}.`,
   )
@@ -171,7 +175,7 @@ export function renderDigest(
           .map((x) => doc.replies[x!.id]?.text)
           .filter(Boolean)
           .at(-1)
-        out.push(`- [${c.id}] follow-up in thread [${c.replyTo}]${prev ? ` (your last reply: ${q(prev)})` : ''}:`)
+        out.push(`- [${c.id}] follow-up in thread [${c.replyTo}]${prev ? ` (your last reply: ${label(prev)})` : ''}:`)
       } else {
         out.push(`- [${c.id}] ${describeTarget(doc, c.target, opts.boardDir)}:`)
       }
@@ -205,7 +209,7 @@ export function renderState(doc: Board | null, fb: FeedbackFile, revision: numbe
   if (!doc) return 'doc.json is currently invalid.'
   const s = effectiveState(fb, revision)
   const n = fb.rounds.length
-  const out: string[] = [`# Current answers on ${q(doc.title)} (${n} round${n === 1 ? '' : 's'} sent)`]
+  const out: string[] = [`# Current answers on ${label(doc.title)} (${n} round${n === 1 ? '' : 's'} sent)`]
   for (const b of doc.blocks) {
     if (b.type === 'decision') {
       const c = s.choices.get(b.id)

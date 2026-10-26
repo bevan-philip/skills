@@ -69,6 +69,8 @@ export function BoardProvider({
   const [saving, setSaving] = React.useState(false)
   const dirty = React.useRef(false)
   const inflight = React.useRef<Promise<unknown>>(Promise.resolve())
+  const pendingSave = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const submitting = React.useRef(false)
 
   // Blocks the agent changed while the page was open get a "changed" badge,
   // on top of what the server reports as changed since the last round.
@@ -88,11 +90,14 @@ export function BoardProvider({
   }, [view.doc])
 
   React.useEffect(() => {
-    if (!dirty.current) return
+    if (!dirty.current || submitting.current) return
     setSaving(true)
     const t = setTimeout(() => {
+      pendingSave.current = undefined
+      if (submitting.current) return
       inflight.current = putDraft({ data: { id: view.id, draft } }).finally(() => setSaving(false))
     }, 400)
+    pendingSave.current = t
     return () => clearTimeout(t)
   }, [draft, view.id])
 
@@ -180,10 +185,23 @@ export function BoardProvider({
       },
       reorder: (block, order) => put({ id: newId(), type: 'step-order', block, order }),
       submit: async (verdict, overall) => {
-        // A late draft save landing after the send would resurrect the draft.
-        await inflight.current.catch(() => {})
-        dirty.current = false
-        await sendRound({ data: { id: view.id, verdict, overall, draft } })
+        // A draft save that lands after the send would resurrect the sent
+        // items as an unsent draft, so cancel the queued save, wait out the
+        // one already running, and allow no new ones until the send settles.
+        submitting.current = true
+        clearTimeout(pendingSave.current)
+        pendingSave.current = undefined
+        try {
+          await inflight.current.catch(() => {})
+          await sendRound({ data: { id: view.id, verdict, overall, draft } })
+        } catch (e) {
+          // The round wasn't recorded; make sure the draft we held back is saved.
+          inflight.current = putDraft({ data: { id: view.id, draft } }).catch(() => {})
+          throw e
+        } finally {
+          submitting.current = false
+          setSaving(false)
+        }
         dirty.current = false
         setDraft({ items: [] })
         setLive({})

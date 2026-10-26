@@ -268,6 +268,7 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
   const [verdict, setVerdict] = React.useState<Verdict | null>(null)
   const [overall, setOverall] = React.useState('')
   const [sending, setSending] = React.useState(false)
+  const [failed, setFailed] = React.useState(false)
   const options: { value: Verdict; title: string; body: string }[] =
     doc.kind === 'plan'
       ? [
@@ -340,6 +341,11 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
           ))}
         </div>
         <Textarea placeholder="Anything else the agent should know? (optional)" value={overall} onChange={(e) => setOverall(e.target.value)} />
+        {failed && (
+          <p className="text-[13px] text-removed">
+            Couldn’t reach the board server, so nothing was sent. Your feedback is still here as a draft; try again.
+          </p>
+        )}
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Keep editing
@@ -351,10 +357,13 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
               if (!verdict) return
               setSending(true)
               try {
+                setFailed(false)
                 await submit(verdict, overall)
                 setOverall('')
                 setVerdict(null)
                 onOpenChange(false)
+              } catch {
+                setFailed(true)
               } finally {
                 setSending(false)
               }
