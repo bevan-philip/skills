@@ -85,6 +85,9 @@ export function DecisionView({ block }: { block: BlockOf<'decision'> }) {
                 choose(block.id, { option: o.id, note: current?.note })
               }}
               onKeyDown={(e) => {
+                // Keys typed in the option's comment popover bubble here through
+                // the portal; only a key pressed on the option itself selects it.
+                if (e.target !== e.currentTarget) return
                 if (e.key === ' ' || e.key === 'Enter') {
                   e.preventDefault()
                   choose(block.id, { option: o.id, note: current?.note })

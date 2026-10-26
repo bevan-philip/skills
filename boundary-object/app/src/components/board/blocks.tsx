@@ -1,6 +1,7 @@
 import type { Block } from '@/lib/schema'
 import { BlockFrame } from '@/components/board/block-frame'
 import { Markdown } from '@/components/board/markdown'
+import { BlockThreads } from '@/components/board/threads'
 import { CalloutView, ConfirmView, DecisionView, MarkdownView, QuestionView, TableView } from '@/components/blocks/basic'
 import { StepsView } from '@/components/blocks/steps'
 import { DiagramView } from '@/components/blocks/diagram'
@@ -25,9 +26,12 @@ function Visual({ block, needsInput }: { block: Extract<Block, { type: 'mermaid'
 
 export function Section({ block }: { block: Extract<Block, { type: 'section' }> }) {
   return (
-    <div id={`b-${block.id}`} className="scroll-mt-20 pt-6" data-quote-block={block.id}>
-      <h2 className="text-xl font-semibold tracking-tight">{block.title}</h2>
-      {block.body && <Markdown className="mt-1.5 text-muted-foreground" body={block.body} />}
+    <div id={`b-${block.id}`} className="flex scroll-mt-20 flex-col gap-3 pt-6">
+      <div data-quote-block={block.id}>
+        <h2 className="text-xl font-semibold tracking-tight">{block.title}</h2>
+        {block.body && <Markdown className="mt-1.5 text-muted-foreground" body={block.body} />}
+      </div>
+      <BlockThreads block={block.id} />
     </div>
   )
 }
