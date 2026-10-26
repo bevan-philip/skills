@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { Block, Board, BoardView, Draft, FeedbackItem, Target, Verdict } from '@/lib/schema'
-import { effectiveState, key, type EffectiveState } from '@/lib/state'
+import { effectiveState, key, viewSteps, type EffectiveState } from '@/lib/state'
 import { putDraft, sendRound } from '@/lib/api'
 import { newId } from '@/lib/utils'
 
@@ -172,9 +172,11 @@ export function BoardProvider({
           mutate((items) => items.map((i) => (i.id === item && i.type === 'step-add' ? { ...i, title } : i)))
           return
         }
-        const original = view.doc.blocks.find((b) => b.id === block)
-        const orig = original?.type === 'steps' ? original.items.find((x) => x.id === item)?.title : undefined
-        if (orig === title) {
+        // Compare with the title already sent, not the doc's: putting the doc's
+        // title back after a submitted rename is an edit of its own.
+        const blk = view.doc.blocks.find((b) => b.id === block)
+        const sent = blk?.type === 'steps' ? viewSteps(blk, submittedState).find((x) => x.id === item)?.title : undefined
+        if (sent === title) {
           mutate((items) => items.filter((i) => !(i.type === 'step-edit' && i.block === block && i.item === item)))
         } else put({ id: newId(), type: 'step-edit', block, item, title })
       },

@@ -151,19 +151,28 @@ export function renderDigest(
             : `- ${where} keep ${itemName(b, i.item)} (un-struck)`,
         )
       }
-      if (i.type === 'step-edit') out.push(`- ${where} rename ${itemName(b, i.item)} → ${q(i.title)}`)
+      if (i.type === 'step-edit') {
+        const current = b?.type === 'steps' ? b.items.find((x) => x.id === i.item)?.title : undefined
+        out.push(
+          current === i.title
+            ? `- ${where} keep the title of ${itemName(b, i.item)} (cancels an earlier rename)`
+            : `- ${where} rename ${itemName(b, i.item)} → ${q(i.title)}`,
+        )
+      }
       if (i.type === 'step-add') {
         const after = i.after ? `after [${i.after}]` : 'at the start'
         out.push(`- ${where} ADD step [${i.id}] ${q(i.title)} ${after} (reuse id "${i.id}" if you adopt it)`)
       }
     }
     // Insertions and reorders interact, so state the order the human ended up
-    // with, worked out exactly as the page lays it out.
+    // with, worked out exactly as the page laid it out when they sent it: every
+    // round up to this one that was still live at the revision they reviewed.
     const moved = new Set(edits.filter((i) => i.type === 'step-order' || i.type === 'step-add').map((i) => i.block))
     for (const id of moved) {
       const b = blk(id)
       if (b?.type !== 'steps') continue
-      const steps = viewSteps(b, effectiveState({ draft: { items: round.items }, rounds: [] }, opts.revision))
+      const sent = { draft: { items: [] }, rounds: fb.rounds.filter((r) => r.n <= round.n) }
+      const steps = viewSteps(b, effectiveState(sent, round.revision))
       const order = steps.map((x) => (x.struck ? `${x.id} (removed)` : x.id)).join(', ')
       out.push(`- in ${blockName(b, id)}: resulting order: ${order}`)
     }

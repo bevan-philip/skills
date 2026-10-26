@@ -97,7 +97,7 @@ export function viewSteps(blk: BlockOf<'steps'>, s: EffectiveState): ViewStep[] 
     return {
       id: it.id,
       title: edit ? edit.title : it.title,
-      originalTitle: edit ? it.title : undefined,
+      originalTitle: edit && edit.title !== it.title ? it.title : undefined,
       detail: it.detail,
       files: it.files,
       status: it.status,
