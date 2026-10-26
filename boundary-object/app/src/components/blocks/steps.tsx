@@ -1,7 +1,9 @@
 import * as React from 'react'
 import { ArrowDown, ArrowUp, ChevronRight, GripVertical, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import type { BlockOf } from '@/lib/schema'
-import { viewSteps, type ViewStep } from '@/lib/state'
+import { key, viewSteps, type ViewStep } from '@/lib/state'
+import { AnswerText } from '@/components/board/answer'
+import { ItemChange } from '@/components/board/block-frame'
 import { useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { ItemComment } from '@/components/board/threads'
@@ -46,7 +48,11 @@ function InlineInput({
 }
 
 export function StepsView({ block }: { block: BlockOf<'steps'> }) {
-  const { state, reorder, strike, rename, addStep } = useBoard()
+  const { state, sent, reorder, strike, rename, addStep } = useBoard()
+  const sentReason = (id: string) => {
+    const s = sent.strikes.get(key(block.id, id))
+    return s?.struck && s.reason ? { text: s.reason, round: s.round! } : undefined
+  }
   const steps = viewSteps(block, state)
   const [editing, setEditing] = React.useState<string | null>(null)
   const [inserting, setInserting] = React.useState<string | null | undefined>(undefined)
@@ -132,6 +138,7 @@ export function StepsView({ block }: { block: BlockOf<'steps'> }) {
               </span>
             )}
             {status && <Badge variant={status.variant}>{status.label}</Badge>}
+            <ItemChange block={block.id} item={s.id} />
             {s.addedByHuman && <Badge variant="human">you added</Badge>}
             {s.originalTitle && (
               <Badge variant="human" title={`was: ${s.originalTitle}`}>
@@ -177,15 +184,15 @@ export function StepsView({ block }: { block: BlockOf<'steps'> }) {
             </>
           )}
           {s.struck && (
-            <input
-              defaultValue={s.strikeReason ?? ''}
-              placeholder="Why remove it? (optional)"
-              onBlur={(e) => {
-                const reason = e.target.value.trim() || undefined
-                if (reason !== s.strikeReason) strike(block.id, s.id, true, reason)
-              }}
-              className="mt-1.5 w-full rounded-md border border-dashed border-removed/40 bg-transparent px-2 py-1 text-xs outline-none placeholder:text-muted-foreground focus:border-removed"
-            />
+            <div className="mt-1.5">
+              <AnswerText
+                label="why remove it"
+                value={s.strikeReason ?? ''}
+                sent={sentReason(s.id)}
+                placeholder="Why remove it? (optional)"
+                onCommit={(reason) => strike(block.id, s.id, true, reason.trim() || undefined)}
+              />
+            </div>
           )}
         </div>
         <div className="flex shrink-0 items-start gap-0.5 max-sm:basis-full max-sm:justify-end">

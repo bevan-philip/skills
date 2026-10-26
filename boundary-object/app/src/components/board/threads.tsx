@@ -122,7 +122,7 @@ const replyTone = {
 }
 
 function AgentBubble({ commentId }: { commentId: string }) {
-  const { doc, view } = useBoard()
+  const { doc, diff } = useBoard()
   const r = doc.replies[commentId]
   if (!r) return null
   const tone = r.status ? replyTone[r.status] : null
@@ -135,7 +135,7 @@ function AgentBubble({ commentId }: { commentId: string }) {
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">Agent</span>
           {tone && <Badge variant={tone.variant}>{tone.label}</Badge>}
-          {view.newReplies.includes(commentId) && <Badge variant="changed">new</Badge>}
+          {diff.newReplies.includes(commentId) && <Badge variant="changed">new</Badge>}
         </div>
         <Markdown className="mt-0.5" body={r.text} />
       </div>

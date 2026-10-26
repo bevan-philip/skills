@@ -5,6 +5,7 @@ import { threadsFor } from '@/lib/state'
 import { useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { ItemComment } from '@/components/board/threads'
+import { ItemChange } from '@/components/board/block-frame'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
@@ -141,6 +142,7 @@ export function FilesView({ block }: { block: BlockOf<'files'> }) {
                   {f.from && <span className="text-muted-foreground line-through">{f.from}</span>}
                   {f.from && <span className="text-muted-foreground">→</span>}
                   <span className="font-medium break-all">{f.path}</span>
+                  <ItemChange block={block.id} item={f.path} />
                   {f.diff && (
                     <span className="text-[11px]">
                       <span className="text-added">+{adds}</span> <span className="text-removed">−{dels}</span>

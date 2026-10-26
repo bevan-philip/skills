@@ -1,7 +1,7 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import crypto from 'node:crypto'
 import { render as renderMermaid } from 'pele'
 import {
   board as boardSchema,
@@ -9,7 +9,6 @@ import {
   feedbackFile as feedbackSchema,
   formatIssues,
   type Board,
-  type BlockChange,
   type BoardSummary,
   type BoardView,
   type Draft,
@@ -19,11 +18,12 @@ import {
   STALE_REVISION,
 } from '@/lib/schema'
 
-// One server per project. Boards live in BOUNDARY_ROOT/<id>/:
+// One server for all boards. Each board lives in BOUNDARY_ROOT/<id>/:
 //   doc.json       written by the agent
 //   feedback.json  written by this server on behalf of the human
 //   history/N.json snapshot of doc.json at revision N
 //   assets/        anything the doc references (screenshots, mockups)
+//   meta.json      the project `boundary new` was run from
 
 export const SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
@@ -56,7 +56,8 @@ const g = globalThis as typeof globalThis & { __boundaryHub?: Hub }
 
 function hub(): Hub {
   if (!g.__boundaryHub) {
-    const root = path.resolve(process.env.BOUNDARY_ROOT ?? '.boundary')
+    // Same default as the CLI: never inside the skill or the project.
+    const root = path.resolve(process.env.BOUNDARY_ROOT ?? path.join(os.tmpdir(), 'boundary-object'))
     fs.mkdirSync(root, { recursive: true })
     g.__boundaryHub = { root, entries: new Map(), listeners: new Map(), waiters: new Map(), lastPoll: new Map() }
     try {
@@ -81,14 +82,6 @@ export function subscribe(id: string, fn: Listener) {
   if (!h.listeners.has(id)) h.listeners.set(id, new Set())
   h.listeners.get(id)!.add(fn)
   return () => h.listeners.get(id)?.delete(fn)
-}
-
-const sha = (s: string) => crypto.createHash('sha1').update(s).digest('hex').slice(0, 12)
-
-function blockHashes(doc: Board | null): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const b of doc?.blocks ?? []) out[b.id] = sha(JSON.stringify(b))
-  return out
 }
 
 // Turn zod paths like blocks.3.options into blocks[3 "storage"].options so
@@ -295,29 +288,17 @@ export function isListening(id: string) {
 
 export async function getView(id: string): Promise<BoardView> {
   const e = await entry(id)
+  // The doc as it stood when the human last sent a round; the page diffs the
+  // current doc against it to show what the agent changed since.
   const last = e.feedback.rounds.at(-1)
-  const changes: Record<string, BlockChange> = {}
-  let newReplies: string[] = []
-  if (last && last.revision < e.revision) {
-    const before = await snapshotAt(e, last.revision)
-    const was = blockHashes(before)
-    for (const [bid, h] of Object.entries(blockHashes(e.doc))) {
-      if (!(bid in was)) changes[bid] = 'new'
-      else if (was[bid] !== h) changes[bid] = 'changed'
-    }
-    const oldReplies = before?.replies ?? {}
-    newReplies = Object.keys(e.doc?.replies ?? {}).filter(
-      (k) => JSON.stringify(oldReplies[k]) !== JSON.stringify(e.doc?.replies[k]),
-    )
-  }
+  const baseline = last && last.revision < e.revision ? await snapshotAt(e, last.revision) : null
   return {
     id,
     doc: e.doc,
     error: e.error,
     revision: e.revision,
     updatedAt: e.updatedAt,
-    changes,
-    newReplies,
+    baseline,
     feedback: e.feedback,
     listening: isListening(id),
   }
@@ -330,6 +311,8 @@ export async function listBoards(): Promise<BoardSummary[]> {
   for (const d of dirs) {
     if (!d.isDirectory() || !boardExists(d.name)) continue
     const e = await entry(d.name)
+    // `boundary new` records where the board was started, for the index page.
+    const meta = await readJson<{ project?: string }>(path.join(e.dir, 'meta.json'), {})
     out.push({
       id: e.id,
       title: e.doc?.title ?? e.id,
@@ -339,6 +322,7 @@ export async function listBoards(): Promise<BoardSummary[]> {
       rounds: e.feedback.rounds.length,
       updatedAt: e.updatedAt,
       error: e.error,
+      project: meta.project,
     })
   }
   return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))

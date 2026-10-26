@@ -1,14 +1,14 @@
 import * as React from 'react'
 import { Check, CircleHelp, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import type { BlockOf } from '@/lib/schema'
-import { key } from '@/lib/state'
+import { answered, key } from '@/lib/state'
 import { useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
+import { AnswerText } from '@/components/board/answer'
+import { ItemChange } from '@/components/board/block-frame'
 import { ItemComment } from '@/components/board/threads'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
 export function Origin({ round }: { round: number | null | undefined }) {
@@ -38,32 +38,39 @@ export function CalloutView({ block }: { block: BlockOf<'callout'> }) {
   )
 }
 
-// A note field that saves on blur, so typing doesn't create a draft per keystroke.
-function LazyText({
-  value,
-  onCommit,
-  placeholder,
-  multiline,
-}: {
-  value: string
-  onCommit: (v: string) => void
-  placeholder: string
-  multiline?: boolean
-}) {
-  const [v, setV] = React.useState(value)
-  React.useEffect(() => setV(value), [value])
-  const props = {
-    value: v,
-    placeholder,
-    onChange: (e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => setV(e.target.value),
-    onBlur: () => v !== value && onCommit(v),
+// Where the human's choice stands: sent, or a draft that changes what was sent.
+function ChoiceStatus({ block }: { block: BlockOf<'decision'> }) {
+  const { state, sent } = useBoard()
+  const current = state.choices.get(block.id)
+  const before = sent.choices.get(block.id)
+  const name = (c?: { option?: string; other?: string }) =>
+    c?.option ? (block.options.find((o) => o.id === c.option)?.label ?? c.option) : c?.other ? 'your own answer' : ''
+  if (!current) return null
+  if (current.round !== null) {
+    return answered(current) ? <span className="text-[11px] text-muted-foreground">Sent in round {current.round}</span> : null
   }
-  return multiline ? <Textarea {...props} className="min-h-16" /> : <Input {...props} />
+  if (!answered(current)) {
+    return before ? (
+      <span className="text-[11px] text-muted-foreground">
+        <Badge variant="human">draft</Badge> clears what you sent in round {before.round} ({name(before)})
+      </span>
+    ) : null
+  }
+  const same = before && answered(before) && before.option === current.option && before.other === current.other
+  // Only the note changed: the choice itself still stands as sent.
+  if (same) return <span className="text-[11px] text-muted-foreground">Sent in round {before.round}</span>
+  return (
+    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <Badge variant="human">draft</Badge>
+      {before && answered(before) && `changes your round ${before.round} choice (${name(before)})`}
+    </span>
+  )
 }
 
 export function DecisionView({ block }: { block: BlockOf<'decision'> }) {
-  const { state, choose } = useBoard()
+  const { state, sent, choose } = useBoard()
   const current = state.choices.get(block.id)
+  const before = sent.choices.get(block.id)
   const [otherOpen, setOtherOpen] = React.useState(Boolean(current?.other))
   return (
     <div className="flex flex-col gap-3">
@@ -110,6 +117,7 @@ export function DecisionView({ block }: { block: BlockOf<'decision'> }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-medium">{o.label}</span>
+                    <ItemChange block={block.id} item={o.id} />
                     {o.recommended && (
                       <Badge variant="secondary">
                         <Sparkles /> agent recommends
@@ -140,13 +148,16 @@ export function DecisionView({ block }: { block: BlockOf<'decision'> }) {
           )
         })}
       </div>
+      <ChoiceStatus block={block} />
       {block.allowOther &&
         (otherOpen || current?.other ? (
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted-foreground">Something else</span>
-            <LazyText
+            <AnswerText
               multiline
+              label="your own answer"
               value={current?.other ?? ''}
+              sent={before?.other ? { text: before.other, round: before.round! } : undefined}
               placeholder="Describe what you'd rather do…"
               onCommit={(other) => choose(block.id, other.trim() ? { other, note: current?.note } : {})}
             />
@@ -156,14 +167,13 @@ export function DecisionView({ block }: { block: BlockOf<'decision'> }) {
             None of these — suggest something else
           </Button>
         ))}
-      {current && (current.option || current.other) && (
+      {current && answered(current) && (
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Why, or any constraints (optional)</span>
-            <Origin round={current.round} />
-          </div>
-          <LazyText
+          <span className="text-xs font-medium text-muted-foreground">Why, or any constraints (optional)</span>
+          <AnswerText
+            label="why"
             value={current.note ?? ''}
+            sent={before?.note ? { text: before.note, round: before.round! } : undefined}
             placeholder="e.g. we already run Postgres in prod"
             onCommit={(note) => choose(block.id, { option: current.option, other: current.other, note: note || undefined })}
           />
@@ -174,10 +184,9 @@ export function DecisionView({ block }: { block: BlockOf<'decision'> }) {
 }
 
 export function QuestionView({ block }: { block: BlockOf<'question'> }) {
-  const { state, answer } = useBoard()
+  const { state, sent, answer } = useBoard()
   const current = state.answers.get(block.id)
-  const [text, setText] = React.useState(current?.text ?? '')
-  React.useEffect(() => setText(current?.text ?? ''), [current?.text])
+  const before = sent.answers.get(block.id)
   return (
     <div className="flex flex-col gap-3">
       <div>
@@ -189,10 +198,7 @@ export function QuestionView({ block }: { block: BlockOf<'question'> }) {
           {block.suggestions.map((s) => (
             <button
               key={s}
-              onClick={() => {
-                setText(s)
-                answer(block.id, s)
-              }}
+              onClick={() => answer(block.id, s)}
               className={cn(
                 'rounded-full border px-3 py-1 text-[13px] transition-colors hover:bg-accent',
                 current?.text === s && 'border-human bg-human-soft text-human',
@@ -203,17 +209,13 @@ export function QuestionView({ block }: { block: BlockOf<'question'> }) {
           ))}
         </div>
       )}
-      <Textarea
-        value={text}
+      <AnswerText
+        multiline
+        value={current?.text ?? ''}
+        sent={before?.text ? { text: before.text, round: before.round! } : undefined}
         placeholder={block.placeholder ?? 'Your answer…'}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => text !== (current?.text ?? '') && answer(block.id, text)}
+        onCommit={(text) => answer(block.id, text)}
       />
-      {current && (
-        <div className="-mt-1">
-          <Origin round={current.round} />
-        </div>
-      )}
     </div>
   )
 }
@@ -231,17 +233,21 @@ const verdicts = [
 ] as const
 
 export function ConfirmView({ block }: { block: BlockOf<'confirm'> }) {
-  const { state, confirm, doc } = useBoard()
+  const { state, sent, confirm, doc } = useBoard()
   return (
     <ul className="flex flex-col divide-y rounded-lg border">
       {block.items.map((it) => {
         const c = state.confirms.get(key(block.id, it.id))
+        const before = sent.confirms.get(key(block.id, it.id))
         return (
           <li key={it.id} className="group flex flex-col gap-2 px-3.5 py-3" data-quote-item={it.id}>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
               <div className="min-w-0 flex-1">
-                <p className={cn('text-sm', c?.value === 'no' && 'text-muted-foreground line-through decoration-removed/60')}>
-                  {it.text}
+                <p className="text-sm">
+                  <span className={cn(c?.value === 'no' && 'text-muted-foreground line-through decoration-removed/60')}>
+                    {it.text}
+                  </span>{' '}
+                  <ItemChange block={block.id} item={it.id} />
                 </p>
                 {it.detail && <Markdown className="mt-0.5 text-muted-foreground" body={it.detail} />}
               </div>
@@ -266,8 +272,10 @@ export function ConfirmView({ block }: { block: BlockOf<'confirm'> }) {
             {c && c.value !== 'yes' && (
               <div className="flex items-center gap-2">
                 <div className="flex-1">
-                  <LazyText
+                  <AnswerText
+                    label="note"
                     value={c.note ?? ''}
+                    sent={before?.note ? { text: before.note, round: before.round! } : undefined}
                     placeholder={
                       doc.kind === 'report'
                         ? c.value === 'no'
@@ -313,6 +321,7 @@ export function TableView({ block }: { block: BlockOf<'table'> }) {
                 {row.cells.map((cell, j) => (
                   <td key={j} className={cn('px-3 py-2.5', j === 0 && 'font-medium')}>
                     <Markdown body={cell} />
+                    {j === 0 && <ItemChange block={block.id} item={row.id} />}
                   </td>
                 ))}
                 <td className="px-1 py-2">

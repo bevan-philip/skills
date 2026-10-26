@@ -33,6 +33,7 @@
 | `title` | Heading of the card. Defaults to the type's name. |
 | `note` | One line of Markdown under the title, saying how to read the block. |
 | `collapsed` | `true` starts the card folded. Use it for reference material. |
+| `changeNote` | One line of Markdown on what you changed in this block and why, e.g. "Switched to a 14-day expiry, as you asked." It is shown only while the block differs from what the human last sent a round against, so an old note disappears by itself once the human has seen it. |
 
 Every card has a **Comment** button, and the human can select any text inside a card to comment on that passage. Ids of items inside a block (steps, options, nodes, confirm items, table rows) must be unique within that block.
 

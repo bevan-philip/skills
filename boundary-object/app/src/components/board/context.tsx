@@ -2,6 +2,7 @@ import * as React from 'react'
 import type { Block, Board, BoardView, Draft, FeedbackItem, Target, Verdict } from '@/lib/schema'
 import { answered, effectiveState, key, viewSteps, type EffectiveState } from '@/lib/state'
 import { putDraft, sendRound } from '@/lib/api'
+import { diffBoards, type BoardDiff, type Change } from '@/lib/diff'
 import { newId } from '@/lib/utils'
 
 type Ctx = {
@@ -9,8 +10,13 @@ type Ctx = {
   view: BoardView
   doc: Board
   state: EffectiveState
+  // Only what the human has already sent, without the draft on top.
+  sent: EffectiveState
   draft: Draft
-  changes: Record<string, 'new' | 'changed'>
+  // What the agent changed since the human's last round (plus blocks it
+  // changed while this page was open).
+  changes: Record<string, Change>
+  diff: BoardDiff
   saving: boolean
   addComment: (target: Target, text: string, replyTo?: string) => void
   editDraft: (id: string, text: string) => void
@@ -73,7 +79,7 @@ export function BoardProvider({
   const submitting = React.useRef(false)
 
   // Blocks the agent changed while the page was open get a "changed" badge,
-  // on top of what the server reports as changed since the last round.
+  // on top of what changed since the human's last round.
   const seen = React.useRef<Map<string, string> | null>(null)
   const [live, setLive] = React.useState<Record<string, 'new' | 'changed'>>({})
   React.useEffect(() => {
@@ -148,6 +154,8 @@ export function BoardProvider({
     [view.feedback, view.revision],
   )
 
+  const diff = React.useMemo(() => diffBoards(view.baseline, view.doc), [view.baseline, view.doc])
+
   const value = React.useMemo<Ctx>(() => {
     const state = effectiveState({ ...view.feedback, draft }, view.revision)
     const drafted = new Set(draft.items.map((i) => i.id))
@@ -156,9 +164,11 @@ export function BoardProvider({
       view,
       doc: view.doc,
       state,
+      sent: submittedState,
       draft,
       saving,
-      changes: { ...view.changes, ...live },
+      changes: { ...diff.blocks, ...live },
+      diff,
       isDraft: (id) => drafted.has(id),
       addComment: (target, text, replyTo) => put({ id: newId(), type: 'comment', target, text, replyTo }),
       editDraft: (id, text) =>
@@ -243,7 +253,7 @@ export function BoardProvider({
         onSubmitted()
       },
     }
-  }, [view, draft, saving, live, put, mutate, submittedState, onSubmitted, save])
+  }, [view, draft, saving, live, diff, put, mutate, submittedState, onSubmitted, save])
 
   return <BoardCtx.Provider value={value}>{children}</BoardCtx.Provider>
 }

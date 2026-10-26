@@ -20,29 +20,29 @@ Don't use one for a quick question you could ask in a sentence, a one-file fix, 
 
 ## The CLI
 
-Every command is `node <this skill's directory>/scripts/boundary.mjs <command>`; below, `boundary` stands for that. It needs Node 22.12 or newer. On first use it installs and builds the app in `app/`, which takes about a minute. Boards live in `<git root>/.boundary/<board-id>/`, and that directory gets a `.gitignore` so boards stay out of commits.
+Every command is `node <this skill's directory>/scripts/boundary.mjs <command>`; below, `boundary` stands for that. It needs Node 22.12 or newer. On first use it installs and builds the app in `app/`, which takes about a minute. Each board lives in its own directory under the system temp directory, never in the project or in this skill's directory. `boundary new` creates it and prints its id and paths. Every other command takes that id and works from any directory.
 
 | Command | What it does |
 | --- | --- |
-| `boundary new <id> [--kind plan\|report] [--title "…"]` | Creates `.boundary/<id>/doc.json` and an `assets/` folder. |
+| `boundary new <name> [--kind plan\|report] [--title "…"]` | Starts a board for this invocation. Prints its id (your name plus a short suffix, e.g. `session-store-k3x9`), the path of its `doc.json` and its `assets/` folder. |
 | `boundary open <id>` | Starts the project's board server if needed, validates the doc, prints the URL, and opens a browser when there is a display. |
 | `boundary check <id>` | Validates `doc.json` after you edit it and prints each problem with its path (`blocks.3(storage).options: …`). |
 | `boundary wait <id> [--timeout 1800]` | Blocks until the human sends a round, then prints the digest. Exit code 2 means it timed out with nothing new. |
 | `boundary feedback <id> [--round N \| --state]` | Reprints a round, or the standing answer to every question so far. |
-| `boundary list` / `boundary stop` | Lists this project's boards, or stops the server. |
-| `boundary demo` | Copies the example boards into this project and opens them, for when the user wants to see what a board looks like. |
+| `boundary list` / `boundary stop` | Lists all boards with the project each was started from, or stops the server. |
+| `boundary demo` | Copies the example boards in and opens them, for when the user wants to see what a board looks like. |
 
 The page updates live whenever `doc.json` changes, so you never need to tell the human to reload.
 
 ## Workflow
 
 1. **Explore first.** Read the code until you can state the current state, the change, and the open questions. Don't ask the human anything the codebase can answer.
-2. **Write the board.** Run `boundary new <id>`, then write `.boundary/<id>/doc.json` following [references/blocks.md](references/blocks.md). Read that file before writing your first board. Copy into `assets/` any image the board shows.
+2. **Write the board.** Run `boundary new <name>` once for this invocation and keep the id it prints. Write the `doc.json` at the path it prints, following [references/blocks.md](references/blocks.md); read that file before writing your first board. Copy any image the board shows into the printed `assets/` folder. Never write board files into the project or into this skill's directory.
 3. **Check and open.** Run `boundary check <id>` until it passes, then `boundary open <id>`.
 4. **Tell the human in one or two lines** what the board is for and what you need from them, and give the URL. Don't repeat the board's content in chat.
 5. **Wait.** Run `boundary wait <id> --timeout 3600`. If your harness can run a command in the background and wake you when it exits, as Claude Code's Bash tool can with `run_in_background`, do that and end your turn. Otherwise run it in the foreground with a timeout below your tool's limit and re-run it on exit code 2. The page shows the human whether you are listening. Feedback they send while you aren't is kept and handed over on your next `wait`.
 6. **Act on the digest** (see below). Revise `doc.json`, run `check`, then `wait` again. Repeat until the human approves.
-7. **After approval, build.** Then write a **report** board: `boundary new <id>-report --kind report`. Use the same steps and the same open-and-wait loop.
+7. **After approval, build.** Then start a **report** board with `boundary new <name>-report --kind report`, which gives the report its own id. Use the same steps and the same open-and-wait loop.
 
 If the human replies in chat instead of on the board, treat that as feedback too. Run `boundary feedback <id> --state` when you need to recall what was decided.
 
@@ -63,7 +63,7 @@ The human's attention is the budget. A good board can be reviewed in under five 
   - prose only where nothing else fits: `markdown`
 - **Progressive disclosure.** Put rationale in `detail` fields (nodes, steps) and set `collapsed: true` on reference blocks. The top of the page holds the questions and the headline.
 - **Group with `section` blocks.** Three to five sections, ordered by what the human must do first ("Decisions I need from you" before "How I'll do it").
-- **Stable ids.** Ids are how feedback finds its way back. Never rename an id between revisions; change the content instead. The page marks changed blocks as *updated*, and new ones as *new*, so the human only re-reads what moved.
+- **Stable ids.** Ids are how feedback finds its way back. Never rename an id between revisions; change the content instead. The page diffs each revision against what the human last saw. Changed blocks are marked *updated* and new ones *new*, and so are the steps, options and rows inside them; removed blocks and items are listed. The human only re-reads what moved.
 
 ## Acting on feedback
 
@@ -78,7 +78,7 @@ For each kind of item:
 - **Decisions, answers, confirmations.** Fold them into the plan. A confirmation marked *NO* means an assumption was wrong: say what changes because of it, and either drop the item or rewrite it.
 - **Plan edits** (remove, rename, add, reorder). These are the human editing your plan directly. Apply them to the `steps` block in `doc.json`. When you adopt a step the human added, reuse the id the digest gives you. If you disagree with an edit, keep the step and explain why in the reply to a comment. Don't silently revert it.
 - **Comments.** Reply to every one in `replies`, keyed by the comment id: `{"text": "...", "status": "resolved" | "declined" | "question" | "noted"}`. Use `question` when you need more from the human; the page then flags it as waiting on them. Pin comments on images give coordinates and the image path, so look at the image. Mockup comments give the element and its CSS selector.
-- **Status.** Update `status` to say what changed in this revision.
+- **Status and change notes.** Update `status` to say what changed in this revision. On each block you changed, set `changeNote` to one line saying what and why. The page shows it on that block until the human has seen it. What the human already sent appears on the page as sent and read-only, so there is no need to restate their answers.
 
 Never edit `feedback.json`; it belongs to the page. `doc.json` belongs to you.
 

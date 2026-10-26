@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ChevronDown, MessageSquarePlus } from 'lucide-react'
+import { Bot, ChevronDown, MessageSquarePlus } from 'lucide-react'
 import type { Block } from '@/lib/schema'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,7 +24,7 @@ export function BlockFrame({
   toolbar?: React.ReactNode
   children: React.ReactNode
 }) {
-  const { changes, state, addComment } = useBoard()
+  const { changes, diff, state, addComment } = useBoard()
   const [open, setOpen] = React.useState(!block.collapsed)
   const [composing, setComposing] = React.useState(false)
   const meta = blockMeta(block)
@@ -69,6 +69,17 @@ export function BlockFrame({
             {change === 'changed' && <Badge variant="changed">updated</Badge>}
           </div>
           {block.note && <Markdown className="mt-0.5 text-muted-foreground" body={block.note} />}
+          {change && block.changeNote && (
+            <div
+              className={cn(
+                'mt-2 flex gap-2 rounded-md border-l-2 px-2.5 py-1.5 text-[13px]',
+                change === 'new' ? 'border-added bg-added-soft/40' : 'border-changed bg-changed-soft/40',
+              )}
+            >
+              <Bot className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <Markdown body={block.changeNote} />
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {toolbar}
@@ -98,6 +109,17 @@ export function BlockFrame({
       {open && (
         <div className="flex flex-col gap-4 px-5 pb-5">
           <div data-quote-block={block.id}>{children}</div>
+          {diff.removedItems[block.id] && (
+            <p className="text-xs text-muted-foreground">
+              Removed since your last round:{' '}
+              {diff.removedItems[block.id].map((label, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 && ', '}
+                  <span className="line-through decoration-removed/60">{label}</span>
+                </React.Fragment>
+              ))}
+            </p>
+          )}
           <BlockThreads block={block.id} />
           {composing && (
             <Composer
@@ -113,4 +135,13 @@ export function BlockFrame({
       )}
     </Card>
   )
+}
+
+// "new" or "updated" next to an item the agent added or changed since the
+// human's last round.
+export function ItemChange({ block, item }: { block: string; item: string }) {
+  const { diff } = useBoard()
+  const c = diff.items[block]?.[item]
+  if (!c) return null
+  return <Badge variant={c === 'new' ? 'added' : 'changed'}>{c === 'new' ? 'new' : 'updated'}</Badge>
 }

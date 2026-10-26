@@ -33,6 +33,7 @@ import { Composer } from '@/components/board/threads'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/components/board/theme'
+import { ItemChange } from '@/components/board/block-frame'
 import { cn } from '@/lib/utils'
 
 type DNode = BlockOf<'diagram'>['nodes'][number]
@@ -250,6 +251,7 @@ export function DiagramView({ block }: { block: BlockOf<'diagram'> }) {
             <span className="font-medium">{sel.label}</span>
             {sel.kind && <Badge variant="outline">{sel.kind}</Badge>}
             {sel.status && sel.status !== 'unchanged' && <Badge variant={sel.status}>{sel.status}</Badge>}
+            <ItemChange block={block.id} item={sel.id} />
             <div className="ml-auto">
               {!composing && (
                 <Button size="xs" variant="outline" onClick={() => setComposing(true)}>

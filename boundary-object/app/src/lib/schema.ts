@@ -15,6 +15,9 @@ const base = {
   title: z.string().optional(),
   note: md.optional(),
   collapsed: z.boolean().optional(),
+  // What the agent changed in this block and why; shown only while the block
+  // differs from what the human saw when they last sent a round.
+  changeNote: md.optional(),
 }
 
 export const changeStatus = z.enum(['added', 'changed', 'removed', 'unchanged'])
@@ -340,16 +343,13 @@ export type FeedbackFile = z.infer<typeof feedbackFile>
 // Thrown when the human approves a revision older than the current doc.
 export const STALE_REVISION = 'STALE_REVISION'
 
-export type BlockChange = 'new' | 'changed'
-
 export type BoardView = {
   id: string
   doc: Board | null
   error: string | null
   revision: number
   updatedAt: string
-  changes: Record<string, BlockChange>
-  newReplies: string[]
+  baseline: Board | null
   feedback: FeedbackFile
   listening: boolean
 }
@@ -363,6 +363,7 @@ export type BoardSummary = {
   rounds: number
   updatedAt: string
   error: string | null
+  project?: string
 }
 
 export function formatIssues(err: z.ZodError): string {

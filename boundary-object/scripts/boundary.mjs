@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 // boundary: the agent's side of a board. No dependencies beyond Node >= 22.
 //
-//   node boundary.mjs new <board> [--kind plan|report] [--title "..."]
+//   node boundary.mjs new <name> [--kind plan|report] [--title "..."]
 //   node boundary.mjs open <board> [--no-browser]
 //   node boundary.mjs check <board>
 //   node boundary.mjs wait <board> [--timeout 1800]
 //   node boundary.mjs feedback <board> [--round N] [--state]
 //   node boundary.mjs list | stop | demo | path <board>
 //
-// Boards live in <git root>/.boundary/<board>/ (override with --root or
-// BOUNDARY_ROOT). The web app in ../app is installed and built on first use.
+// Each `new` creates its own board directory under the system temp directory
+// (override with --root or BOUNDARY_ROOT), never in the project or this skill.
+// The web app in ../app is installed and built on first use.
 
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -47,13 +49,14 @@ function projectRoot() {
   return r.status === 0 ? r.stdout.trim() : process.cwd()
 }
 
-const ROOT = path.resolve(args.root ?? process.env.BOUNDARY_ROOT ?? path.join(projectRoot(), '.boundary'))
+// Boards are working documents for one invocation, so they live apart from
+// both the project and the skill, and every command finds them the same way
+// whatever directory it runs in.
+const ROOT = path.resolve(args.root ?? process.env.BOUNDARY_ROOT ?? path.join(os.tmpdir(), 'boundary-object'))
 const INFO = path.join(ROOT, '.server.json')
 
 function ensureRoot() {
   fs.mkdirSync(ROOT, { recursive: true })
-  const gi = path.join(ROOT, '.gitignore')
-  if (!fs.existsSync(gi)) fs.writeFileSync(gi, '# Boards are working documents; delete this file to commit them.\n*\n')
 }
 
 function needBoard() {
@@ -210,17 +213,23 @@ const starters = {
   }),
 }
 
+// Every invocation gets a board of its own: the name is a readable prefix and a
+// short random suffix keeps it apart from earlier boards with the same name.
 async function cmdNew() {
-  const dir = needBoard()
   const kind = args.kind ?? 'plan'
   if (!starters[kind]) die('--kind is "plan" or "report"')
-  const doc = path.join(dir, 'doc.json')
-  if (fs.existsSync(doc) && !args.force) die(`${doc} already exists (use --force to overwrite)`)
+  const name = (board ?? 'board').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'board'
   ensureRoot()
+  let id
+  do id = `${name}-${Math.random().toString(36).slice(2, 6)}`
+  while (fs.existsSync(path.join(ROOT, id)))
+  const dir = path.join(ROOT, id)
   fs.mkdirSync(path.join(dir, 'assets'), { recursive: true })
-  fs.writeFileSync(doc, JSON.stringify(starters[kind](args.title ?? board), null, 2) + '\n')
-  console.log(doc)
-  say(`Created a ${kind} board. Write the real content into doc.json, then run \`open ${board}\`.`)
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ project: projectRoot(), created: new Date().toISOString() }, null, 2) + '\n')
+  const doc = path.join(dir, 'doc.json')
+  fs.writeFileSync(doc, JSON.stringify(starters[kind](args.title ?? board ?? 'Untitled board'), null, 2) + '\n')
+  console.log(`board: ${id}\ndoc:   ${doc}\nassets: ${path.join(dir, 'assets')}`)
+  say(`Created a ${kind} board. Write the real content into that doc.json, then run \`open ${id}\`; use the id "${id}" for every later command.`)
 }
 
 async function cmdCheck(port) {
@@ -284,12 +293,13 @@ async function cmdList() {
   const boards = await (await api(port, '/api/boards')).json()
   if (!boards.length) return console.log(`No boards in ${ROOT}.`)
   for (const b of boards) {
-    console.log(`${b.id}\t${b.kind}\trev ${b.revision}\t${b.rounds} round${b.rounds === 1 ? '' : 's'}\t${b.error ? 'INVALID\t' : ''}${b.title}`)
+    const where = b.project ? `\t${b.project}` : ''
+    console.log(`${b.id}\t${b.kind}\trev ${b.revision}\t${b.rounds} round${b.rounds === 1 ? '' : 's'}\t${b.error ? 'INVALID\t' : ''}${b.title}${where}`)
   }
   console.log(`\n${url(port, '').replace(/\/b\/$/, '/')}`)
 }
 
-// Copies the bundled example boards into this project so you can try the page.
+// Copies the bundled example boards into the board directory so you can try the page.
 async function cmdDemo() {
   ensureRoot()
   const src = path.join(SKILL, 'examples')
@@ -305,7 +315,7 @@ async function cmdDemo() {
 
 async function cmdStop() {
   const info = readInfo()
-  if (!info) return console.log('No board server recorded for this project.')
+  if (!info) return console.log('No board server is running.')
   stopPid(info.pid)
   fs.rmSync(INFO, { force: true })
   console.log(`Stopped the board server on port ${info.port}.`)
@@ -313,15 +323,15 @@ async function cmdStop() {
 
 const help = `boundary — share a plan or report with the human as an interactive page
 
-  new <board> [--kind plan|report] [--title T]  create .boundary/<board>/doc.json
+  new <name> [--kind plan|report] [--title T]   start a board for this invocation; prints its id and doc path
   open <board> [--no-browser]                   start the server, validate, open the page
   check <board>                                 validate doc.json after editing it
   wait <board> [--timeout SECS]                 block until the human sends a round (default 1800s)
   feedback <board> [--round N | --state]        reprint a round, or the standing answers
-  list                                          boards in this project
-  stop                                          stop this project's board server
+  list                                          all boards, with the project each was started from
+  stop                                          stop the board server
   path <board>                                  print the board directory
-  demo                                          copy the example boards here and open them
+  demo                                          copy the example boards in and open them
 
 Boards: ${ROOT}`
 

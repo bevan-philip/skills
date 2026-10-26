@@ -2,7 +2,7 @@
 
 An agent skill for planning and reporting through a shared, interactive page instead of a long chat message. It is an experiment with the idea of [boundary objects](https://maggieappleton.com/planning-agents) between agents and humans: one artifact that both sides read and edit in their own way.
 
-- **The agent** writes `.boundary/<board>/doc.json`: typed blocks such as decisions, assumptions, steps, diagrams, mockups, screenshots and diffs.
+- **The agent** starts a board with `boundary new` and writes its `doc.json`: typed blocks such as decisions, assumptions, steps, diagrams, mockups, screenshots and diffs. Each invocation gets its own board directory under the system temp directory, outside both the project and the skill.
 - **You** see a page where you can pick options, mark assumptions right or wrong, drag, rename, strike or add plan steps, comment on any block, any passage of text, any diagram node, file or line, and drop pins on screenshots or mockup elements.
 - **The agent gets your feedback** as a digest from a blocking `wait` call, revises the board in place (the page updates live and marks what changed), and replies to each comment in its thread.
 
@@ -23,7 +23,7 @@ To try it without an agent, from inside any git repository:
 node ~/.claude/skills/boundary-object/scripts/boundary.mjs demo
 ```
 
-This copies the two example boards (a plan and a report) into `.boundary/` and opens them. To play the agent's side, run `wait session-store-plan` in another terminal and press **Send to agent** on the page.
+This copies the two example boards (a plan and a report) into the board directory and opens them. To play the agent's side, run `wait session-store-plan` in another terminal and press **Send to agent** on the page.
 
 ## Layout
 
@@ -39,7 +39,7 @@ This copies the two example boards (a plan and a report) into `.boundary/` and o
 
 ## How it works
 
-- **One server per project**, bound to 127.0.0.1 on port 4317 or the next free one. Its details are recorded in `.boundary/.server.json`, and the CLI restarts it when the app is rebuilt.
+- **One server for all boards**, bound to 127.0.0.1 on port 4317 or the next free one. Boards live in `<temp dir>/boundary-object/<board-id>/` (override with `BOUNDARY_ROOT`). The server's details are recorded in `.server.json` there, and the CLI restarts it when the app is rebuilt.
 - **Each side owns one file.** The agent writes `doc.json`; the server writes `feedback.json` (an autosaved draft plus submitted rounds). Every content change to `doc.json` becomes `history/N.json`, which is how the page knows which blocks changed since your last round.
 - **Rounds.** Your edits collect in a draft until you press **Send**, choosing *approve*, *request changes* or *just comments*. `wait` returns the oldest round the agent hasn't received and marks it delivered, and the page shows that receipt. While a `wait` is open, the page shows the agent as listening.
 - **Plan edits are proposals.** Your strikes, renames, additions and reordering overlay the agent's steps until it revises the doc. After that the doc is the truth again, so the agent has to adopt each edit or explain why it didn't.
@@ -50,7 +50,7 @@ This copies the two example boards (a plan and a report) into `.boundary/` and o
 ```sh
 cd app
 npm install
-npm run dev        # vite dev server; set BOUNDARY_ROOT=/path/to/.boundary
+npm run dev        # vite dev server; set BOUNDARY_ROOT to a boards directory
 npm run typecheck
 npm run build      # what the CLI runs
 ```

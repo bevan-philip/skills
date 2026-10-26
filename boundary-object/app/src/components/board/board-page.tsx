@@ -155,29 +155,103 @@ function Outline({ asks }: { asks: Set<string> }) {
   )
 }
 
+function Chip({ href, children, tone }: { href?: string; children: React.ReactNode; tone: 'changed' | 'added' | 'removed' | 'human' }) {
+  const cls = {
+    changed: 'border-changed/40 bg-changed-soft/50',
+    added: 'border-added/40 bg-added-soft/50',
+    removed: 'border-removed/30 bg-removed-soft/40 line-through decoration-removed/60',
+    human: 'border-human/30 bg-human-soft/50 text-human',
+  }[tone]
+  const c = cn('rounded-full border px-2 py-0.5 text-[12px]', cls, href && 'hover:brightness-95')
+  return href ? (
+    <a href={href} className={c}>
+      {children}
+    </a>
+  ) : (
+    <span className={c}>{children}</span>
+  )
+}
+
+// What happened since the human's last round: whether the agent has it, and
+// what it changed, each linking to the place on the board.
 function LastRound() {
-  const { view } = useBoard()
+  const { view, doc, diff } = useBoard()
   const last = view.feedback.rounds.at(-1)
   if (!last) return null
   const verdict = { approve: 'approved', changes: 'asked for changes', comment: 'sent comments' }[last.verdict]
-  const revised = view.revision > last.revision
+  const title = (id: string) => doc.blocks.find((b) => b.id === id)?.title ?? id
+  const updated = Object.keys(diff.blocks).filter((id) => diff.blocks[id] === 'changed')
+  const added = Object.keys(diff.blocks).filter((id) => diff.blocks[id] === 'new')
+  const comments = view.feedback.rounds.flatMap((r) => r.items).filter((i) => i.type === 'comment')
+  const replied = diff.newReplies.flatMap((id) => {
+    const c = comments.find((x) => x.id === id)
+    return c && c.type === 'comment' ? [{ id, thread: c.replyTo ?? c.id, on: c.target.block === 'summary' ? 'the summary' : title(c.target.block) }] : []
+  })
+  const anything = updated.length + added.length + diff.removedBlocks.length + replied.length > 0
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border bg-card px-3.5 py-2.5 text-[13px]">
-      <CircleDot className="size-3.5 text-human" />
-      <span>
-        Round {last.n}: you {verdict} at {new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
-      </span>
-      {last.deliveredAt ? (
-        <span className="flex items-center gap-1 text-added">
-          <Check className="size-3.5" /> Agent received it
+    <div className="flex flex-col gap-2.5 rounded-lg border bg-card px-3.5 py-3 text-[13px]">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <CircleDot className="size-3.5 text-human" />
+        <span>
+          Round {last.n}: you {verdict} at {new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
         </span>
-      ) : (
-        <span className="text-muted-foreground">Waiting for the agent to pick it up.</span>
+        {last.deliveredAt ? (
+          <span className="flex items-center gap-1 text-added">
+            <Check className="size-3.5" /> Agent received it
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Waiting for the agent to pick it up.</span>
+        )}
+      </div>
+      {anything && (
+        <div className="flex flex-col gap-1.5 border-t pt-2.5">
+          <span className="font-medium">Since then the agent has</span>
+          {replied.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-muted-foreground">replied on</span>
+              {replied.map((r) => (
+                <Chip key={r.id} href={`#c-${r.thread}`} tone="human">
+                  {r.on}
+                </Chip>
+              ))}
+            </div>
+          )}
+          {updated.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-muted-foreground">updated</span>
+              {updated.map((id) => (
+                <Chip key={id} href={`#b-${id}`} tone="changed">
+                  {title(id)}
+                </Chip>
+              ))}
+            </div>
+          )}
+          {added.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-muted-foreground">added</span>
+              {added.map((id) => (
+                <Chip key={id} href={`#b-${id}`} tone="added">
+                  {title(id)}
+                </Chip>
+              ))}
+            </div>
+          )}
+          {diff.removedBlocks.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-muted-foreground">removed</span>
+              {diff.removedBlocks.map((b) => (
+                <Chip key={b.id} tone="removed">
+                  {b.title}
+                </Chip>
+              ))}
+            </div>
+          )}
+        </div>
       )}
-      {revised && (
-        <span className="text-muted-foreground">
-          It has since revised the board — look for <Badge variant="changed">updated</Badge> and <Badge variant="added">new</Badge>.
-        </span>
+      {last.verdict !== 'approve' && (
+        <p className="text-muted-foreground">
+          You're drafting round {last.n + 1}. Anything you already sent shows as sent; change it or add to it, then send again.
+        </p>
       )}
     </div>
   )

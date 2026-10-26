@@ -24,13 +24,13 @@ function Index() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Boards</h1>
-          <p className="text-sm text-muted-foreground">Plans and reports your agent has shared with you in this project.</p>
+          <p className="text-sm text-muted-foreground">Plans and reports your agents have shared with you.</p>
         </div>
         <ThemeToggle />
       </div>
       {!isLoading && boards.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
-          No boards yet. An agent creates one with <code className="font-mono">boundary open &lt;id&gt;</code>.
+          No boards yet. An agent starts one with <code className="font-mono">boundary new &lt;name&gt;</code>.
         </Card>
       )}
       <div className="flex flex-col gap-2">
@@ -48,6 +48,7 @@ function Index() {
                   )}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {b.project ? `${b.project.split(/[\\/]/).pop()} · ` : ''}
                   {b.status ?? b.id} · rev {b.revision} · {b.rounds} round{b.rounds === 1 ? '' : 's'} sent ·{' '}
                   {new Date(b.updatedAt).toLocaleString()}
                 </div>
