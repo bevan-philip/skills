@@ -5,7 +5,8 @@ import { BlockThreads } from '@/components/board/threads'
 import { CalloutView, ConfirmView, DecisionView, MarkdownView, QuestionView, TableView } from '@/components/blocks/basic'
 import { StepsView } from '@/components/blocks/steps'
 import { DiagramView } from '@/components/blocks/diagram'
-import { ImageView, MermaidView, MockupView, PointToggle, usePointing } from '@/components/blocks/visual'
+import { ImageView, MermaidGraph, MermaidView, MockupView, PointToggle, usePointing } from '@/components/blocks/visual'
+import { isGraphMermaid } from '@/lib/graph'
 import { CodeView, FilesView } from '@/components/blocks/code'
 
 function Visual({ block, needsInput }: { block: Extract<Block, { type: 'mermaid' | 'image' | 'mockup' }>; needsInput: boolean }) {
@@ -41,6 +42,14 @@ export function BlockView({ block, needsInput }: { block: Block; needsInput: boo
     case 'section':
       return <Section block={block} />
     case 'mermaid':
+      if (isGraphMermaid(block.code)) {
+        return (
+          <BlockFrame block={block} needsInput={needsInput} wide>
+            <MermaidGraph block={block} />
+          </BlockFrame>
+        )
+      }
+      return <Visual block={block} needsInput={needsInput} />
     case 'image':
     case 'mockup':
       return <Visual block={block} needsInput={needsInput} />

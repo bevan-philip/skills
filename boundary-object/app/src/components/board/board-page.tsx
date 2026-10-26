@@ -1,6 +1,9 @@
 import * as React from 'react'
 import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ArrowLeftRight, Bot, Check, CheckCircle2, CircleDot, MessageSquare, Send } from 'lucide-react'
+import { Mark, type Tone } from '@/components/board/marks'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { STALE_REVISION, type Board, type BoardView, type FeedbackItem, type Verdict } from '@/lib/schema'
 import { openAsks, threadsFor } from '@/lib/state'
 import { BoardProvider, useBoard } from '@/components/board/context'
@@ -27,7 +30,7 @@ import { cn } from '@/lib/utils'
 export function BoardMissing({ message }: { message: string }) {
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-16">
-      <Card className="gap-2 p-6">
+      <Card className="gap-2 px-6">
         <div className="flex items-center gap-2 font-medium">
           <AlertTriangle className="size-4 text-removed" /> This board can't be shown yet
         </div>
@@ -86,7 +89,7 @@ function Header({ onSend }: { onSend: () => void }) {
   const count = draft.items.length
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-3 px-4">
+      <div className="flex h-14 items-center gap-3 px-4 xl:px-6">
         <Link to="/" className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground" aria-label="All boards">
           <ArrowLeftRight className="size-4" />
         </Link>
@@ -99,10 +102,10 @@ function Header({ onSend }: { onSend: () => void }) {
           <Presence />
           <span className="hidden w-14 text-right text-[11px] text-muted-foreground sm:block">{saving ? 'saving…' : count ? 'saved' : ''}</span>
           <ThemeToggle />
-          <Button variant={count ? 'human' : 'outline'} size="sm" onClick={onSend}>
+          <Button variant={count ? 'default' : 'outline'} size="sm" onClick={onSend}>
             <Send />
             Send to agent
-            {count > 0 && <span className="rounded bg-white/20 px-1.5 text-[11px] tabular-nums">{count}</span>}
+            {count > 0 && <span className="rounded bg-primary-foreground/20 px-1.5 text-[11px] tabular-nums">{count}</span>}
           </Button>
         </div>
       </div>
@@ -155,20 +158,16 @@ function Outline({ asks }: { asks: Set<string> }) {
   )
 }
 
-function Chip({ href, children, tone }: { href?: string; children: React.ReactNode; tone: 'changed' | 'added' | 'removed' | 'human' }) {
-  const cls = {
-    changed: 'border-changed/40 bg-changed-soft/50',
-    added: 'border-added/40 bg-added-soft/50',
-    removed: 'border-removed/30 bg-removed-soft/40 line-through decoration-removed/60',
-    human: 'border-human/30 bg-human-soft/50 text-human',
-  }[tone]
-  const c = cn('rounded-full border px-2 py-0.5 text-[12px]', cls, href && 'hover:brightness-95')
+function Chip({ href, children, tone }: { href?: string; children: React.ReactNode; tone: Tone }) {
+  const c = cn('font-normal', tone === 'removed' && 'line-through decoration-removed/60', href && 'hover:brightness-95')
   return href ? (
-    <a href={href} className={c}>
-      {children}
-    </a>
+    <Mark tone={tone} className={c} asChild>
+      <a href={href}>{children}</a>
+    </Mark>
   ) : (
-    <span className={c}>{children}</span>
+    <Mark tone={tone} className={c}>
+      {children}
+    </Mark>
   )
 }
 
@@ -269,19 +268,19 @@ function Hero({ asks }: { asks: string[] }) {
       </div>
       <BlockThreads block="summary" />
       {view.error && (
-        <div className="flex gap-2.5 rounded-lg border border-removed/40 bg-removed-soft/40 p-3.5 text-sm">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-removed" />
-          <div>
-            <div className="font-medium">The agent's latest update has an error, so you're seeing the previous version.</div>
-            <pre className="mt-1 font-mono text-xs whitespace-pre-wrap text-muted-foreground">{view.error}</pre>
-          </div>
-        </div>
+        <Alert variant="destructive">
+          <AlertTriangle />
+          <AlertTitle>The agent's latest update has an error, so you're seeing the previous version.</AlertTitle>
+          <AlertDescription>
+            <pre className="font-mono text-xs whitespace-pre-wrap">{view.error}</pre>
+          </AlertDescription>
+        </Alert>
       )}
       {doc.status && (
-        <div className="flex items-start gap-2.5 rounded-lg bg-muted/70 px-3.5 py-2.5 text-sm">
-          <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <span>{doc.status}</span>
-        </div>
+        <Alert className="bg-muted/70">
+          <Bot />
+          <AlertDescription className="text-foreground">{doc.status}</AlertDescription>
+        </Alert>
       )}
       <LastRound />
       {asks.length > 0 && (
@@ -290,9 +289,9 @@ function Hero({ asks }: { asks: string[] }) {
           {asks.map((id) => {
             const b = doc.blocks.find((x) => x.id === id)
             return (
-              <a key={id} href={`#b-${id}`} className="rounded-full border border-human/30 bg-human-soft/50 px-2.5 py-0.5 text-[13px] text-human hover:bg-human-soft">
+              <Chip key={id} href={`#b-${id}`} tone="human">
                 {b?.title ?? id}
-              </a>
+              </Chip>
             )
           })}
         </div>
@@ -310,6 +309,7 @@ function describe(doc: Board, it: FeedbackItem): string {
     case 'choice': {
       const b = blk(it.block)
       const opt = b?.type === 'decision' ? b.options.find((o) => o.id === it.option)?.label : undefined
+      if (it.defer) return `${title(it.block)}: ${it.defer === 'explore' ? 'find out first' : 'your call'}`
       return `${title(it.block)}: ${opt ?? (it.other ? `“${it.other}”` : 'cleared')}`
     }
     case 'answer':
@@ -334,6 +334,10 @@ function describe(doc: Board, it: FeedbackItem): string {
       return `Add step “${it.title}”`
     case 'step-order':
       return `Reorder ${title(it.block)}`
+    case 'tune': {
+      const n = Object.keys(it.values).length
+      return n ? `Tune ${title(it.block)}: ${n} value${n === 1 ? '' : 's'}` : `Reset ${title(it.block)} to the agent's values`
+    }
   }
 }
 
@@ -379,41 +383,31 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
           <p className="text-sm text-muted-foreground">No individual comments or edits — you can still send a verdict.</p>
         )}
         {asks.length > 0 && (
-          <div className="flex gap-2 rounded-lg bg-changed-soft/50 px-3 py-2 text-[13px]">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-changed" />
-            <span>
+          <Alert className="bg-changed-soft/50">
+            <AlertTriangle className="text-changed" />
+            <AlertDescription className="text-foreground">
               Still unanswered: {asks.map((id) => doc.blocks.find((b) => b.id === id)?.title ?? id).join(', ')}. If you approve, the
               agent goes with its recommendation.
-            </span>
-          </div>
+            </AlertDescription>
+          </Alert>
         )}
-        <div className="grid gap-2" role="radiogroup">
+        <RadioGroup value={verdict ?? ''} onValueChange={(v) => setVerdict(v as Verdict)}>
           {options.map((o) => (
-            <button
+            <label
               key={o.value}
-              role="radio"
-              aria-checked={verdict === o.value}
-              onClick={() => setVerdict(o.value)}
               className={cn(
-                'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent/60',
-                verdict === o.value && 'border-human bg-human-soft/40 ring-1 ring-human',
+                'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/60',
+                verdict === o.value && 'border-primary bg-human-soft/40 ring-1 ring-primary',
               )}
             >
-              <span
-                className={cn(
-                  'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border',
-                  verdict === o.value && 'border-human bg-human text-white',
-                )}
-              >
-                {verdict === o.value && <Check className="size-3" strokeWidth={3} />}
-              </span>
+              <RadioGroupItem value={o.value} className="mt-0.5" />
               <span>
                 <span className="block text-sm font-medium">{o.title}</span>
                 <span className="block text-[13px] text-muted-foreground">{o.body}</span>
               </span>
-            </button>
+            </label>
           ))}
-        </div>
+        </RadioGroup>
         <Textarea placeholder="Anything else the agent should know? (optional)" value={overall} onChange={(e) => setOverall(e.target.value)} />
         {failure && <p className="text-[13px] text-removed">{failure}</p>}
         <DialogFooter>
@@ -421,7 +415,6 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
             Keep editing
           </Button>
           <Button
-            variant="human"
             disabled={!verdict || sending}
             onClick={async () => {
               if (!verdict) return
@@ -460,9 +453,12 @@ function Shell() {
   return (
     <div className="min-h-screen pb-24">
       <Header onSend={() => setSending(true)} />
-      <div className="mx-auto grid max-w-[1400px] gap-10 px-4 xl:grid-cols-[220px_minmax(0,820px)_220px] xl:justify-center">
+      {/* The outline sits at the far left; the middle column takes the rest of
+          the width and centres the content in it, so wide cards grow into free
+          space rather than over the outline. */}
+      <div className="grid gap-10 px-4 xl:grid-cols-[220px_minmax(0,1fr)_220px] xl:px-6">
         <Outline asks={askSet} />
-        <main className="flex min-w-0 flex-col gap-5 pt-6 wrap-anywhere [&_button]:wrap-normal [&_table]:wrap-normal">
+        <main className="flex min-w-0 flex-col gap-5 pt-6 wrap-anywhere *:mx-auto *:w-full *:max-w-[820px] [&_button]:wrap-normal [&_table]:wrap-normal">
           <Hero asks={asks} />
           {doc.blocks.map((b) => (
             <BlockView key={b.id} block={b} needsInput={askSet.has(b.id)} />
@@ -476,7 +472,7 @@ function Shell() {
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">Done reviewing? Send your comments and a verdict to the agent.</p>
-                <Button variant="human" onClick={() => setSending(true)}>
+                <Button onClick={() => setSending(true)}>
                   <Send /> Send to agent
                 </Button>
               </>

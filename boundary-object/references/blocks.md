@@ -60,16 +60,29 @@ A heading that groups the cards after it, and the outline's grouping.
 
 ### `decision`
 One choice among options. Mark at most one option `recommended`. With `allowOther` (default `true`) the human can write in their own answer, and they can add a note to any choice.
+
+Instead of picking, the human can answer **Find out first** (you try the options for real and ask again) or **Your call** (you decide). See "Acting on feedback" in SKILL.md.
+
+| Field | |
+| --- | --- |
+| `reversible` | `true` shows "easy to change later", `false` shows "hard to undo". Set it so the human knows where their attention matters. |
+| `options[].evidence` | Markdown: what you found by actually trying this option (a spike, a prototype, a benchmark), as opposed to what you predict. Shown as "What I found". |
+| `options[].metrics` | `{ "name": value }`. Every metric across the options is shown in one comparison table under them. Use the same names on each option. |
+
 ```json
 {
   "id": "storage", "type": "decision", "title": "Where sessions live",
   "question": "Which store should back sessions?",
   "context": "Roughly 4k active sessions, ~40 auth checks per second at peak.",
+  "reversible": false,
   "options": [
     { "id": "postgres", "label": "Postgres table", "recommended": true,
       "summary": "A `sessions` table, swept hourly.",
-      "pros": ["No new infrastructure"], "cons": ["One extra query per request"] },
-    { "id": "redis", "label": "Redis", "pros": ["Fastest"], "cons": ["New service to run"] }
+      "pros": ["No new infrastructure"], "cons": ["One extra query per request"],
+      "evidence": "Spiked on a scratch branch: the extra query adds 1.1 ms at p95.",
+      "metrics": { "p95 added": "1.1 ms", "Files changed": 6 } },
+    { "id": "redis", "label": "Redis", "pros": ["Fastest"], "cons": ["New service to run"],
+      "metrics": { "p95 added": "0.4 ms", "Files changed": 9 } }
   ]
 }
 ```
@@ -115,7 +128,18 @@ Rows are arrays of Markdown cells, or `{ "id", "cells", "highlight"? }` when you
 ## Pictures
 
 ### `diagram`
-Boxes and arrows, laid out automatically (dagre). `direction` is `LR` (default) or `TB`. On nodes and edges, `status` is `added`, `changed`, `removed` or `unchanged`; use it to show the change. `kind` picks an icon: `service`, `ui`, `db`, `store`, `queue`, `external`, `actor`, `file`, `function` or `note`. Nodes can sit in a `group`. Clicking a node shows its `detail` and lets the human comment on that node. Keep a diagram to about 12 nodes or fewer; split anything bigger.
+Boxes and arrows. The page lays them out with ELK: edges are routed around boxes, every label sits on its arrow, groups nest, and nothing is shrunk below a readable size (a wide diagram pans, and **Expand** opens it full screen). The human clicks any box or arrow to read its `detail` and comment on it.
+
+| Field | |
+| --- | --- |
+| `direction` | `auto` (default) uses whichever of left-to-right and top-to-bottom fits the page better. `LR` or `TB` states a preference; the page still flips it when the other direction is much easier to read. |
+| `nodes[].kind` | Picks an icon or shape: `service`, `ui`, `db`, `store`, `queue`, `external`, `actor` (pill), `file`, `function`, `note` (dashed), `decision` (diamond), `state` (rounded), `start` and `end` (dots, for state machines). |
+| `nodes[].status`, `edges[].status` | `added`, `changed`, `removed` or `unchanged`. Use them to show the change; the page colours them and adds a legend. |
+| `nodes[].group` | The id of a group to draw the node inside. |
+| `groups[].parent` | Nest a group inside another. |
+| `edges[].dashed` | Draws the arrow dashed (removed arrows are dashed anyway). |
+
+Keep a diagram to about 15 nodes; split anything bigger into two diagrams that each answer one question. A comment on an arrow comes back as `arrow [from->to]`.
 ```json
 { "id": "architecture", "type": "diagram", "title": "Request path",
   "groups": [{ "id": "api", "label": "API process" }],
@@ -128,9 +152,17 @@ Boxes and arrows, laid out automatically (dagre). `direction` is `LR` (default) 
 ```
 
 ### `mermaid`
-Any Mermaid diagram (Mermaid 12.1 syntax). Sequence diagrams are the main use: anything that happens over time between parties. Diagrams are drawn by [Pele](https://pele.run), which uses its own layout, so the result can differ slightly from what mermaid.js would draw. `check` renders every diagram and rejects one with a syntax error, giving you the line and column. The human comments by pointing: they click **Point**, then a spot on the diagram, and the digest gives you the label of what they clicked.
+Any Mermaid diagram (Mermaid 12.1 syntax), parsed by [Pele](https://pele.run). `check` parses every diagram and rejects one with a syntax error, giving you the line and column.
+
+- **Flowcharts and state diagrams** are drawn by the same layout engine as `diagram` blocks, so they get the same routing, sizing and click-to-comment boxes and arrows. Mark the change with classes named `added`, `changed` or `removed` (`A:::added`, or `class A added`); you don't need `classDef`. Write a flowchart in Mermaid when it's quicker than a `diagram` block; use a `diagram` when boxes need `detail` or icons.
+- **Everything else** (sequence diagrams above all, but also ER, class, Gantt, timelines and charts) is drawn by Pele. The human comments by pointing: they click **Point**, then a spot on the diagram, and the digest gives you the label of what they clicked.
+
 ```json
 { "id": "login-flow", "type": "mermaid", "title": "Login", "code": "sequenceDiagram\n  Browser->>API: POST /login\n  API-->>Browser: Set-Cookie" }
+```
+```json
+{ "id": "lifecycle", "type": "mermaid", "title": "A session's life",
+  "code": "stateDiagram-v2\n  direction LR\n  [*] --> Active: login\n  Active --> Expired: 30 days idle\n  Active --> Revoked: sign out\n  Expired --> [*]\n  Revoked --> [*]\n  class Revoked added" }
 ```
 
 ### `image`
@@ -141,9 +173,23 @@ A screenshot or picture. `src` is a path relative to the board directory (`asset
 
 ### `mockup`
 A sketch of a UI, rendered in a sandboxed iframe: either `html` inline (a fragment is fine, and gets a plain system-font base style) or `src` pointing at an HTML file in `assets/`. `height` is in pixels (default 420). In **Point** mode the human clicks a real element, and the digest gives you its tag, text and CSS selector. Keep it plain HTML and CSS with no network requests: the iframe has no access to anything outside itself.
+
+**Controls** let the human tune a design directly instead of choosing between your guesses. Write the mockup's CSS against custom properties, and add a control for each one. The page sets the property on the mockup's root as the human moves the control, and the digest gives you the values they settle on.
+
+| Control field | |
+| --- | --- |
+| `id`, `label` | Required. |
+| `var` | The CSS custom property it sets, e.g. `--shadow-blur`. |
+| `type` | `range` (default; needs `min` and `max`, optional `step` and `unit`), `select` (needs `options`) or `color`. |
+| `value` | Your proposed value. A `range` value is a number; `unit` is appended to it. |
+
 ```json
-{ "id": "devices-mockup", "type": "mockup", "title": "Sessions section", "height": 330,
-  "html": "<h2>Where you're signed in</h2><button class='all'>Sign out everywhere else</button>" }
+{ "id": "card-mockup", "type": "mockup", "title": "Card shadow", "height": 240,
+  "html": "<style>:root{--blur:8px;--lift:2px}.card{box-shadow:0 var(--lift) var(--blur) rgb(0 0 0/.2);padding:24px;border-radius:12px}</style><div class='card'>Card</div>",
+  "controls": [
+    { "id": "blur", "label": "Shadow softness", "var": "--blur", "min": 0, "max": 40, "unit": "px", "value": 8 },
+    { "id": "lift", "label": "Lift", "var": "--lift", "min": 0, "max": 12, "unit": "px", "value": 2 }
+  ] }
 ```
 
 ## Code
@@ -175,6 +221,12 @@ Verdict: CHANGES REQUESTED. Do not start implementing. Revise doc.json to addres
 ## Decisions
 - decision [storage] "Where sessions live" → option [postgres] "Postgres table" (your recommendation)
   note: "We already back up Postgres; no new infra please."
+- decision [retry] "Retry API" → FIND OUT FIRST. Don't decide this yet: try the options for real, record what you found, and ask again.
+  what they want to know: "How many of the 60 call sites does each one cover without hand edits?"
+
+## Tuned values
+- mockup [card-mockup] "Card shadow":
+  - --blur ("Shadow softness") = "14px" (you proposed "8px")
 
 ## Confirmations
 - confirm [assumptions] "What I'm assuming", item [logout-ok] "Logging everyone out once … is acceptable." → NO, wrong

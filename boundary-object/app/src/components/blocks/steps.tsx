@@ -7,18 +7,19 @@ import { ItemChange } from '@/components/board/block-frame'
 import { useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { ItemComment } from '@/components/board/threads'
-import { Badge } from '@/components/ui/badge'
+import { KindBadge, Mark, type MarkKind } from '@/components/board/marks'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-const statusBadge = {
-  todo: { label: 'to do', variant: 'outline' as const },
-  doing: { label: 'in progress', variant: 'changed' as const },
-  done: { label: 'done', variant: 'added' as const },
-  skipped: { label: 'skipped', variant: 'secondary' as const },
-  changed: { label: 'done differently', variant: 'changed' as const },
-  blocked: { label: 'blocked', variant: 'removed' as const },
+const statusBadge: Record<string, { label: string; kind: MarkKind }> = {
+  todo: { label: 'to do', kind: 'outline' },
+  doing: { label: 'in progress', kind: 'changed' },
+  done: { label: 'done', kind: 'added' },
+  skipped: { label: 'skipped', kind: 'secondary' },
+  changed: { label: 'done differently', kind: 'changed' },
+  blocked: { label: 'blocked', kind: 'removed' },
 }
 
 function InlineInput({
@@ -137,15 +138,15 @@ export function StepsView({ block }: { block: BlockOf<'steps'> }) {
                 {s.title}
               </span>
             )}
-            {status && <Badge variant={status.variant}>{status.label}</Badge>}
+            {status && <KindBadge kind={status.kind}>{status.label}</KindBadge>}
             <ItemChange block={block.id} item={s.id} />
-            {s.addedByHuman && <Badge variant="human">you added</Badge>}
+            {s.addedByHuman && <Mark tone="human">you added</Mark>}
             {s.originalTitle && (
-              <Badge variant="human" title={`was: ${s.originalTitle}`}>
+              <Mark tone="human" title={`was: ${s.originalTitle}`}>
                 you renamed
-              </Badge>
+              </Mark>
             )}
-            {s.struck && <Badge variant="removed">you removed</Badge>}
+            {s.struck && <Mark tone="removed">you removed</Mark>}
           </div>
           {s.originalTitle && (
             <p className="mt-0.5 text-xs text-muted-foreground line-through">{s.originalTitle}</p>
@@ -165,23 +166,27 @@ export function StepsView({ block }: { block: BlockOf<'steps'> }) {
             </div>
           )}
           {s.detail && (
-            <>
-              <button
-                className="mt-1.5 flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
-                onClick={() =>
-                  setOpen((o) => {
-                    const n = new Set(o)
-                    if (n.has(s.id)) n.delete(s.id)
-                    else n.add(s.id)
-                    return n
-                  })
-                }
-              >
-                <ChevronRight className={cn('size-3.5 transition-transform', expanded && 'rotate-90')} />
-                {expanded ? 'Hide details' : 'Details'}
-              </button>
-              {expanded && <Markdown className="mt-1.5 text-muted-foreground" body={s.detail} />}
-            </>
+            <Collapsible
+              open={expanded}
+              onOpenChange={(on) =>
+                setOpen((o) => {
+                  const n = new Set(o)
+                  if (on) n.add(s.id)
+                  else n.delete(s.id)
+                  return n
+                })
+              }
+            >
+              <CollapsibleTrigger asChild>
+                <Button variant="link" size="xs" className="mt-1 h-auto px-0 text-muted-foreground hover:text-foreground">
+                  <ChevronRight className={cn('transition-transform', expanded && 'rotate-90')} />
+                  {expanded ? 'Hide details' : 'Details'}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <Markdown className="mt-1.5 text-muted-foreground" body={s.detail} />
+              </CollapsibleContent>
+            </Collapsible>
           )}
           {s.struck && (
             <div className="mt-1.5">

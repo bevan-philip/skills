@@ -2,8 +2,9 @@ import * as React from 'react'
 import { Bot, CornerDownRight, MessageSquarePlus, Pencil, Trash2, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { KindBadge, Mark, type MarkKind } from '@/components/board/marks'
 import { Markdown } from '@/components/board/markdown'
 import { useBoard } from '@/components/board/context'
 import { threadsFor, type Comment, type Thread } from '@/lib/state'
@@ -42,14 +43,17 @@ export function Composer({
         className="min-h-20"
       />
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground">⌘/Ctrl + Enter</span>
+        <KbdGroup className="text-[11px] text-muted-foreground">
+          <Kbd>⌘/Ctrl</Kbd>
+          <Kbd>Enter</Kbd>
+        </KbdGroup>
         <div className="flex gap-2">
           {onCancel && (
             <Button size="sm" variant="ghost" onClick={onCancel}>
               Cancel
             </Button>
           )}
-          <Button size="sm" variant="human" disabled={!ok} onClick={send}>
+          <Button size="sm" disabled={!ok} onClick={send}>
             {submitLabel}
           </Button>
         </div>
@@ -77,7 +81,7 @@ function HumanBubble({ c, pinIndex }: { c: Comment; pinIndex?: number }) {
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">You</span>
           {label && !c.replyTo && <span className="truncate">on {label}</span>}
-          {draft ? <Badge variant="human">draft</Badge> : <span>· round {c.round}</span>}
+          {draft ? <Mark tone="human">draft</Mark> : <span>· round {c.round}</span>}
           {draft && !editing && (
             <span className="ml-auto flex gap-0.5">
               <Button size="icon-sm" variant="ghost" aria-label="Edit" onClick={() => setEditing(true)}>
@@ -114,11 +118,11 @@ function HumanBubble({ c, pinIndex }: { c: Comment; pinIndex?: number }) {
   )
 }
 
-const replyTone = {
-  resolved: { label: 'resolved', variant: 'added' as const },
-  declined: { label: 'declined', variant: 'removed' as const },
-  question: { label: 'asks you', variant: 'changed' as const },
-  noted: { label: 'noted', variant: 'secondary' as const },
+const replyTone: Record<string, { label: string; kind: MarkKind }> = {
+  resolved: { label: 'resolved', kind: 'added' },
+  declined: { label: 'declined', kind: 'removed' },
+  question: { label: 'asks you', kind: 'changed' },
+  noted: { label: 'noted', kind: 'secondary' },
 }
 
 function AgentBubble({ commentId }: { commentId: string }) {
@@ -134,8 +138,8 @@ function AgentBubble({ commentId }: { commentId: string }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">Agent</span>
-          {tone && <Badge variant={tone.variant}>{tone.label}</Badge>}
-          {diff.newReplies.includes(commentId) && <Badge variant="changed">new</Badge>}
+          {tone && <KindBadge kind={tone.kind}>{tone.label}</KindBadge>}
+          {diff.newReplies.includes(commentId) && <Mark tone="changed">new</Mark>}
         </div>
         <Markdown className="mt-0.5" body={r.text} />
       </div>
@@ -170,12 +174,14 @@ function ThreadView({ t, pinIndex }: { t: Thread; pinIndex?: number }) {
             />
           </div>
         ) : (
-          <button
-            className="flex items-center gap-1 pl-8 text-xs text-muted-foreground hover:text-foreground"
+          <Button
+            variant="ghost"
+            size="xs"
+            className="ml-6 self-start text-muted-foreground"
             onClick={() => setReplying(true)}
           >
-            <CornerDownRight className="size-3" /> Reply
-          </button>
+            <CornerDownRight /> Reply
+          </Button>
         ))}
     </div>
   )
@@ -229,20 +235,22 @@ export function ItemComment({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
+          variant="ghost"
+          size="xs"
           aria-label={`Comment on ${label}`}
           className={cn(
-            'inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs transition-colors',
+            'shrink-0 px-1.5',
             count
-              ? 'bg-human-soft text-human'
-              : 'text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100',
+              ? 'bg-human-soft text-human hover:bg-human-soft hover:text-human'
+              : 'text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100',
             className,
           )}
           onClick={(e) => e.stopPropagation()}
         >
           <MessageSquarePlus className="size-3.5" />
           {count > 0 && count}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80" onClick={(e) => e.stopPropagation()}>
         <div className="mb-2 truncate text-xs text-muted-foreground">

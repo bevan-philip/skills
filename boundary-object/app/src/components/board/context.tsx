@@ -21,13 +21,14 @@ type Ctx = {
   addComment: (target: Target, text: string, replyTo?: string) => void
   editDraft: (id: string, text: string) => void
   removeDraft: (id: string) => void
-  choose: (block: string, choice: { option?: string; other?: string; note?: string }) => void
+  choose: (block: string, choice: { option?: string; other?: string; note?: string; defer?: 'explore' | 'delegate' }) => void
   answer: (block: string, text: string) => void
   confirm: (block: string, item: string, value: 'yes' | 'no' | 'unsure', note?: string) => void
   strike: (block: string, item: string, struck: boolean, reason?: string) => void
   rename: (block: string, item: string, title: string) => void
   addStep: (block: string, after: string | null, title: string) => string
   reorder: (block: string, order: string[]) => void
+  tune: (block: string, values: Record<string, string>) => void
   submit: (verdict: Verdict, overall: string) => Promise<void>
   isDraft: (id: string) => boolean
 }
@@ -52,6 +53,7 @@ function slot(it: FeedbackItem): string | null {
     case 'step-edit':
       return `${it.type}:${key(it.block, it.item)}`
     case 'step-order':
+    case 'tune':
       return `${it.type}:${it.block}`
     default:
       return null
@@ -178,7 +180,9 @@ export function BoardProvider({
         const prev = submittedState.choices.get(block)
         // Clearing a choice that was never sent is no change at all.
         const noop = !answered(c) && !answered(prev)
-        if (noop || (prev && prev.option === c.option && prev.other === c.other && (prev.note ?? '') === (c.note ?? ''))) {
+        const same =
+          prev && prev.option === c.option && prev.other === c.other && prev.defer === c.defer && (prev.note ?? '') === (c.note ?? '')
+        if (noop || same) {
           mutate((items) => items.filter((i) => !(i.type === 'choice' && i.block === block)))
         } else put({ id: newId(), type: 'choice', block, ...c })
       },
@@ -227,6 +231,14 @@ export function BoardProvider({
         return id
       },
       reorder: (block, order) => put({ id: newId(), type: 'step-order', block, order }),
+      tune: (block, values) => {
+        // Back to what was sent (or, with nothing sent, to the agent's own
+        // values, passed as {}): nothing new to tell the agent.
+        const prev = submittedState.tunes.get(block)?.values ?? {}
+        if (JSON.stringify(prev) === JSON.stringify(values)) {
+          mutate((items) => items.filter((i) => !(i.type === 'tune' && i.block === block)))
+        } else put({ id: newId(), type: 'tune', block, values })
+      },
       submit: async (verdict, overall) => {
         // A draft save that lands after the send would resurrect the sent
         // items as an unsent draft, so cancel the queued save, wait out every

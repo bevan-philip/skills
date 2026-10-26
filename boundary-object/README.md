@@ -3,7 +3,7 @@
 An agent skill for planning and reporting through a shared, interactive page instead of a long chat message. It is an experiment with the idea of [boundary objects](https://maggieappleton.com/planning-agents) between agents and humans: one artifact that both sides read and edit in their own way.
 
 - **The agent** starts a board with `boundary new` and writes its `doc.json`: typed blocks such as decisions, assumptions, steps, diagrams, mockups, screenshots and diffs. Each invocation gets its own board directory under the system temp directory, outside both the project and the skill.
-- **You** see a page where you can pick options, mark assumptions right or wrong, drag, rename, strike or add plan steps, comment on any block, any passage of text, any diagram node, file or line, and drop pins on screenshots or mockup elements.
+- **You** see a page where you can pick options, mark assumptions right or wrong, drag, rename, strike or add plan steps, comment on any block, any passage of text, any box or arrow in a diagram, file or line, and drop pins on screenshots or mockup elements. When you can't choose yet, send the agent to **find out first** (it tries the options and comes back with measurements) or say **your call**. Mockups can carry controls, so you tune a design directly instead of picking between guesses.
 - **The agent gets your feedback** as a digest from a blocking `wait` call, revises the board in place (the page updates live and marks what changed), and replies to each comment in its thread.
 
 ```
@@ -33,7 +33,8 @@ This copies the two example boards (a plan and a report) into the board director
 | `references/blocks.md` | Every block type with a JSON example, and the digest format. |
 | `scripts/boundary.mjs` | Dependency-free CLI: `new`, `open`, `check`, `wait`, `feedback`, `list`, `stop`, `demo`. |
 | `examples/` | A plan that uses every block type, and a report with before/after screenshots. |
-| `app/` | TanStack Start + React + Tailwind v4 + shadcn/ui components (Radix). Diagrams use React Flow with dagre layout. Mermaid syntax is drawn by [Pele](https://pele.run), which loads only the diagram types a board uses and is themed by the page's CSS variables. |
+| `app/` | TanStack Start + React + Tailwind v4 + shadcn/ui. `components/ui/` holds stock components from the shadcn registry (Radix base, Nova style; see `components.json`), unmodified; the board's own colours are in `components/board/marks.tsx` and `styles.css`. |
+| `app/src/lib/graph.ts`, `layout.ts` | Every box-and-arrow picture: `diagram` blocks, and Mermaid flowcharts and state diagrams parsed by [Pele](https://pele.run). Laid out by [ELK](https://eclipse.dev/elk/) (layered, orthogonal routing, inline edge labels, nested groups) from labels measured in the page font, then drawn with React Flow. Other Mermaid types (sequence diagrams, charts) are rendered by Pele itself. |
 | `app/src/lib/schema.ts` | The board and feedback schemas (zod), shared by the page, the server and `check`. |
 | `app/src/server/digest.ts` | Turns a round of feedback into the text the agent reads. |
 
@@ -53,6 +54,7 @@ npm install
 npm run dev        # vite dev server; set BOUNDARY_ROOT to a boards directory
 npm run typecheck
 npm run build      # what the CLI runs
+npx shadcn@latest add <component>   # add a stock shadcn component to components/ui
 ```
 
 ## Limits and ideas
@@ -61,3 +63,4 @@ npm run build      # what the CLI runs
 - Feedback is batched into rounds; the agent sees nothing until you press Send. Streaming single comments to a listening agent would make it more conversational.
 - The agent can't yet highlight a region of an image or point at part of a mockup in its own replies.
 - Natural next blocks: a timeline, a metric before/after, and test results.
+- Ideas from [Planning with agents](https://maggieappleton.com/planning-agents) not built yet: a shared board several people review together, with each decision recorded against who made it and when; a map of the files a plan touches; and live controls wired to the real app rather than a mockup.

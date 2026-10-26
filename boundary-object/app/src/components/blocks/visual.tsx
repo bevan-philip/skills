@@ -1,12 +1,22 @@
 import * as React from 'react'
-import { Crosshair } from 'lucide-react'
+import { Crosshair, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import type { BlockOf, Target } from '@/lib/schema'
 import { threadsFor } from '@/lib/state'
 import { assetUrl, useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { Composer, pinNumbers } from '@/components/board/threads'
+import { mermaidGraph, type Graph } from '@/lib/graph'
+import { GraphView } from '@/components/blocks/graph'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Mark } from '@/components/board/marks'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Slider } from '@/components/ui/slider'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Toggle } from '@/components/ui/toggle'
 import { cn } from '@/lib/utils'
 
 // ---- Pointing: click a spot on a visual to attach a comment to it ----
@@ -15,16 +25,15 @@ type Pending = { x: number; y: number; extra?: Partial<Target> }
 
 export function PointToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <Button
+    <Toggle
       size="sm"
-      variant={on ? 'human' : 'ghost'}
-      className={cn(!on && 'text-muted-foreground')}
-      onClick={() => onChange(!on)}
-      aria-pressed={on}
+      pressed={on}
+      onPressedChange={onChange}
+      className="text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
     >
       <Crosshair />
       <span className="sr-only sm:not-sr-only">{on ? 'Click to place' : 'Point'}</span>
-    </Button>
+    </Toggle>
   )
 }
 
@@ -110,6 +119,31 @@ function describePeleError(e: unknown) {
   return `${err.message ?? String(e)}${at}`
 }
 
+// Flowcharts and state diagrams are parsed by Pele but laid out and drawn by
+// GraphView, like the agent's own diagrams.
+export function MermaidGraph({ block }: { block: BlockOf<'mermaid'> }) {
+  const [graph, setGraph] = React.useState<Graph | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    let live = true
+    mermaidGraph(block.code)
+      .then((g) => live && (setGraph(g), setError(g ? null : 'not a flowchart or state diagram')))
+      .catch((e: unknown) => live && setError(describePeleError(e)))
+    return () => {
+      live = false
+    }
+  }, [block.code])
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription className="font-mono text-xs whitespace-pre-wrap">This diagram could not be rendered: {error}</AlertDescription>
+      </Alert>
+    )
+  }
+  if (!graph) return <Skeleton className="h-60" />
+  return <GraphView blockId={block.id} title={block.title ?? 'Diagram'} graph={graph} />
+}
+
 export function MermaidView({ block, point }: { block: BlockOf<'mermaid'>; point: ReturnType<typeof usePointing> }) {
   const [error, setError] = React.useState<string | null>(null)
   const [ready, setReady] = React.useState(false)
@@ -155,11 +189,11 @@ export function MermaidView({ block, point }: { block: BlockOf<'mermaid'>; point
       }}
     >
       {error && (
-        <div className="mb-3 rounded-md border border-removed/40 bg-removed-soft/40 p-3 font-mono text-xs whitespace-pre-wrap">
-          This diagram could not be rendered: {error}
-        </div>
+        <Alert variant="destructive" className="mb-3">
+          <AlertDescription className="font-mono text-xs whitespace-pre-wrap">This diagram could not be rendered: {error}</AlertDescription>
+        </Alert>
       )}
-      {!ready && !error && <div className="h-40 animate-pulse rounded bg-muted" />}
+      {!ready && !error && <Skeleton className="h-40" />}
       <div ref={target} className="pele-host" />
       <Pins block={block.id} pending={point.pending} onCancel={point.cancel} onSave={point.save} />
     </div>
@@ -176,17 +210,12 @@ export function ImageView({ block, point }: { block: BlockOf<'image'>; point: Re
   return (
     <figure className="flex flex-col gap-2">
       {block.before && (
-        <div className="inline-flex self-start rounded-md border p-0.5 text-xs">
-          {(['before', 'after'] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setSide(s)}
-              className={cn('rounded px-2.5 py-1 capitalize', side === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+        <Tabs value={side} onValueChange={(v) => setSide(v as 'after' | 'before')}>
+          <TabsList>
+            <TabsTrigger value="before">Before</TabsTrigger>
+            <TabsTrigger value="after">After</TabsTrigger>
+          </TabsList>
+        </Tabs>
       )}
       <div className="flex justify-center rounded-lg border bg-muted/30 p-2">
         <div
@@ -233,6 +262,7 @@ const picker = `<script>(() => {
     return parts.join(' > ')
   }
   addEventListener('message', (e) => { if (e.data && e.data.type === 'boundary-mode') { on = e.data.on; document.body.style.cursor = on ? 'crosshair' : ''; if (!on) box.style.display = 'none' } })
+  addEventListener('message', (e) => { if (e.data && e.data.type === 'boundary-vars') for (const [k, v] of Object.entries(e.data.vars)) document.documentElement.style.setProperty(k, v) })
   document.addEventListener('mouseover', (e) => {
     if (!on) return
     hl = e.target; const r = hl.getBoundingClientRect()
@@ -272,6 +302,13 @@ export function MockupView({ block, point }: { block: BlockOf<'mockup'>; point: 
     frame.current?.contentWindow?.postMessage({ type: 'boundary-mode', on: point.on }, '*')
   }, [point.on])
 
+  const controls = block.controls ?? []
+  const [vars, setVars] = React.useState<Record<string, string>>({})
+  const pushVars = React.useCallback((v: Record<string, string>) => {
+    frame.current?.contentWindow?.postMessage({ type: 'boundary-vars', vars: v }, '*')
+  }, [])
+  React.useEffect(() => pushVars(vars), [vars, pushVars])
+
   React.useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.source !== frame.current?.contentWindow || e.data?.type !== 'boundary-pick') return
@@ -284,8 +321,8 @@ export function MockupView({ block, point }: { block: BlockOf<'mockup'>; point: 
 
   return (
     <div className="relative">
-      <div className="overflow-hidden rounded-lg border bg-white shadow-xs">
-        <div className="flex items-center gap-1.5 border-b bg-muted/50 px-3 py-1.5">
+      <div className="overflow-hidden rounded-lg border bg-card shadow-xs">
+        <div className="flex items-center gap-1.5 border-b bg-muted px-3 py-1.5">
           <span className="size-2.5 rounded-full bg-removed/50" />
           <span className="size-2.5 rounded-full bg-changed/50" />
           <span className="size-2.5 rounded-full bg-added/50" />
@@ -298,13 +335,118 @@ export function MockupView({ block, point }: { block: BlockOf<'mockup'>; point: 
               title={block.title ?? 'mockup'}
               sandbox="allow-scripts"
               srcDoc={wrap(html)}
-              onLoad={() => frame.current?.contentWindow?.postMessage({ type: 'boundary-mode', on: point.on }, '*')}
-              className="block w-full"
+              onLoad={() => {
+                frame.current?.contentWindow?.postMessage({ type: 'boundary-mode', on: point.on }, '*')
+                pushVars(vars)
+              }}
+              className="block w-full bg-white"
               style={{ height: block.height }}
             />
           )}
           <Pins block={block.id} pending={point.pending} onCancel={point.cancel} onSave={point.save} />
         </div>
+      </div>
+      {controls.length > 0 && <Controls block={block} onVars={setVars} />}
+    </div>
+  )
+}
+
+// ---- Mockup controls: the human tunes the design directly ----
+
+type Control = NonNullable<BlockOf<'mockup'>['controls']>[number]
+
+const cssValue = (c: Control, v: string | number) => (c.type === 'range' ? `${v}${c.unit ?? ''}` : String(v))
+
+function Controls({ block, onVars }: { block: BlockOf<'mockup'>; onVars: (v: Record<string, string>) => void }) {
+  const { state, tune } = useBoard()
+  const controls = block.controls ?? []
+  const defaults = React.useMemo(() => Object.fromEntries(controls.map((c) => [c.id, cssValue(c, c.value)])), [controls])
+  const chosen = state.tunes.get(block.id)
+  // What the sliders show: the agent's values with the human's on top, while
+  // they drag; committed to the draft when they let go.
+  const [live, setLive] = React.useState<Record<string, string>>(() => ({ ...defaults, ...chosen?.values }))
+  React.useEffect(() => setLive({ ...defaults, ...chosen?.values }), [defaults, chosen])
+  React.useEffect(() => onVars(Object.fromEntries(controls.map((c) => [c.var, live[c.id] ?? defaults[c.id]]))), [live, controls, defaults, onVars])
+
+  const commit = (next: Record<string, string>) => {
+    // Only what differs from the agent's own values goes back to it.
+    tune(block.id, Object.fromEntries(Object.entries(next).filter(([id, v]) => defaults[id] !== v)))
+  }
+  const set = (c: Control, v: string, done: boolean) => {
+    const next = { ...live, [c.id]: v }
+    setLive(next)
+    if (done) commit(next)
+  }
+  const changed = controls.some((c) => (live[c.id] ?? defaults[c.id]) !== defaults[c.id])
+
+  return (
+    <div className="mt-3 flex flex-col gap-3 rounded-lg border bg-muted/30 p-3.5">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <SlidersHorizontal className="size-3.5 text-muted-foreground" />
+        <span className="font-medium">Tune it</span>
+        <span className="text-muted-foreground">The mockup follows as you move these; the agent gets the values you settle on.</span>
+        <span className="ml-auto flex items-center gap-2">
+          {chosen && (chosen.round === null ? <Mark tone="human">draft</Mark> : <span className="text-muted-foreground">sent in round {chosen.round}</span>)}
+          {changed && (
+            <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => commit(defaults)}>
+              <RotateCcw /> Agent's values
+            </Button>
+          )}
+        </span>
+      </div>
+      <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+        {controls.map((c) => {
+          const v = live[c.id] ?? defaults[c.id]
+          const mine = v !== defaults[c.id]
+          return (
+            <div key={c.id} className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2 text-[13px]">
+                <label htmlFor={`ctl-${block.id}-${c.id}`} className={cn('font-medium', mine && 'text-human')}>
+                  {c.label}
+                </label>
+                <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                  {v}
+                  {mine && <span className="ml-1.5 line-through opacity-60">{defaults[c.id]}</span>}
+                </span>
+              </div>
+              {c.type === 'range' && (
+                <Slider
+                  id={`ctl-${block.id}-${c.id}`}
+                  min={c.min}
+                  max={c.max}
+                  step={c.step ?? 1}
+                  value={[parseFloat(v)]}
+                  onValueChange={([n]) => set(c, cssValue(c, n), false)}
+                  onValueCommit={([n]) => set(c, cssValue(c, n), true)}
+                />
+              )}
+              {c.type === 'select' && (
+                <Select value={v} onValueChange={(x) => set(c, x, true)}>
+                  <SelectTrigger id={`ctl-${block.id}-${c.id}`} size="sm" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {c.options!.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {o}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {c.type === 'color' && (
+                <Input
+                  id={`ctl-${block.id}-${c.id}`}
+                  type="color"
+                  value={v}
+                  className="h-8 w-16 p-1"
+                  onChange={(e) => set(c, e.target.value, false)}
+                  onBlur={(e) => set(c, e.target.value, true)}
+                />
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

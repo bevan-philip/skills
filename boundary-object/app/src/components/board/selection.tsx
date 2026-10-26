@@ -2,6 +2,7 @@ import * as React from 'react'
 import { MessageSquareQuote } from 'lucide-react'
 import { useBoard } from '@/components/board/context'
 import { Composer } from '@/components/board/threads'
+import { Button } from '@/components/ui/button'
 
 type Sel = { block: string; item?: string; quote: string; x: number; y: number }
 
@@ -45,7 +46,7 @@ export function SelectionCommenter() {
   return (
     <div data-selection-ui className="fixed z-50" style={{ left, top: Math.min(sel.y + 8, window.innerHeight - 220) }}>
       {composing ? (
-        <div className="w-80 rounded-lg border bg-popover p-3 shadow-lg">
+        <div className="w-80 rounded-lg bg-popover p-3 text-popover-foreground shadow-md ring-1 ring-foreground/10">
           <blockquote className="mb-2 line-clamp-3 border-l-2 border-human/50 pl-2 text-xs text-muted-foreground italic">
             {sel.quote}
           </blockquote>
@@ -63,13 +64,9 @@ export function SelectionCommenter() {
           />
         </div>
       ) : (
-        <button
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setComposing(true)}
-          className="flex items-center gap-1.5 rounded-full bg-human px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-human/90"
-        >
-          <MessageSquareQuote className="size-3.5" /> Comment on selection
-        </button>
+        <Button size="sm" className="rounded-full shadow-lg" onMouseDown={(e) => e.preventDefault()} onClick={() => setComposing(true)}>
+          <MessageSquareQuote /> Comment on selection
+        </Button>
       )}
     </div>
   )

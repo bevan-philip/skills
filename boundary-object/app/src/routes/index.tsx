@@ -5,6 +5,8 @@ import { AlertTriangle, ArrowRight } from 'lucide-react'
 import { getBoards } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import { Mark } from '@/components/board/marks'
 import { ThemeToggle } from '@/components/board/theme'
 
 export const Route = createFileRoute('/')({
@@ -29,22 +31,27 @@ function Index() {
         <ThemeToggle />
       </div>
       {!isLoading && boards.length === 0 && (
-        <Card className="p-6 text-sm text-muted-foreground">
-          No boards yet. An agent starts one with <code className="font-mono">boundary new &lt;name&gt;</code>.
-        </Card>
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>No boards yet</EmptyTitle>
+            <EmptyDescription>
+              An agent starts one with <code className="font-mono">boundary new &lt;name&gt;</code>.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
       <div className="flex flex-col gap-2">
         {boards.map((b) => (
           <Link key={b.id} to="/b/$id" params={{ id: b.id }}>
-            <Card className="group flex-row items-center gap-4 p-4 transition-colors hover:bg-accent/50">
+            <Card className="group flex-row items-center gap-4 px-4 transition-colors hover:bg-accent/50">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{b.title}</span>
                   <Badge variant="outline">{b.kind === 'plan' ? 'Plan' : 'Report'}</Badge>
                   {b.error && (
-                    <Badge variant="removed">
+                    <Mark tone="removed">
                       <AlertTriangle /> invalid
-                    </Badge>
+                    </Mark>
                   )}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">

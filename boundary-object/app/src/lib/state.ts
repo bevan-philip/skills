@@ -18,6 +18,9 @@ export type EffectiveState = {
   edits: Map<string, With<Extract<FeedbackItem, { type: 'step-edit' }>>>
   adds: Map<string, With<Extract<FeedbackItem, { type: 'step-add' }>>[]>
   orders: Map<string, With<Extract<FeedbackItem, { type: 'step-order' }>>>
+  tunes: Map<string, With<Extract<FeedbackItem, { type: 'tune' }>>>
+  // "Find out first" requests the agent has since answered with a revision.
+  explored: Map<string, With<Extract<FeedbackItem, { type: 'choice' }>>>
   comments: Comment[]
 }
 
@@ -32,6 +35,8 @@ export function effectiveState(fb: FeedbackFile, revision: number): EffectiveSta
     edits: new Map(),
     adds: new Map(),
     orders: new Map(),
+    tunes: new Map(),
+    explored: new Map(),
     comments: [],
   }
   const apply = (items: FeedbackItem[], round: Round | null) => {
@@ -46,7 +51,12 @@ export function effectiveState(fb: FeedbackFile, revision: number): EffectiveSta
           s.comments.push({ ...it, ...origin })
           break
         case 'choice':
-          s.choices.set(it.block, { ...it, ...origin })
+          // Like a plan edit, "find out first" asks the agent for a revision.
+          // Once it has revised the doc, the decision is open again.
+          if (it.defer === 'explore' && !planEditsLive) {
+            s.choices.delete(it.block)
+            s.explored.set(it.block, { ...it, ...origin })
+          } else s.choices.set(it.block, { ...it, ...origin })
           break
         case 'answer':
           s.answers.set(it.block, { ...it, ...origin })
@@ -65,6 +75,9 @@ export function effectiveState(fb: FeedbackFile, revision: number): EffectiveSta
           break
         case 'step-order':
           if (planEditsLive) s.orders.set(it.block, { ...it, ...origin })
+          break
+        case 'tune':
+          s.tunes.set(it.block, { ...it, ...origin })
           break
       }
     }
@@ -150,11 +163,12 @@ export function threadsFor(s: EffectiveState, block: string): Thread[] {
   return roots.map((root) => ({ root, followups: s.comments.filter((c) => c.replyTo === root.id) }))
 }
 
-// A choice counts only if it names an option or a non-blank answer of the
-// human's own; clearing "something else" leaves an empty one behind. Given the
-// decision, an option the agent has since removed doesn't count either.
-export const answered = (c?: { option?: string; other?: string }, block?: BlockOf<'decision'>) =>
-  Boolean(c && ((c.option && (!block || block.options.some((o) => o.id === c.option))) || c.other?.trim()))
+// A choice counts only if it names an option, a non-blank answer of the
+// human's own, or hands the decision back ("find out first", "your call");
+// clearing "something else" leaves an empty one behind. Given the decision, an
+// option the agent has since removed doesn't count either.
+export const answered = (c?: { option?: string; other?: string; defer?: string }, block?: BlockOf<'decision'>) =>
+  Boolean(c && (c.defer || (c.option && (!block || block.options.some((o) => o.id === c.option))) || c.other?.trim()))
 
 // Blocks that ask the human for something and have no answer yet.
 export function openAsks(doc: Board, s: EffectiveState): string[] {

@@ -1,9 +1,10 @@
 import * as React from 'react'
 import { Bot, ChevronDown, MessageSquarePlus } from 'lucide-react'
 import type { Block } from '@/lib/schema'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Mark } from '@/components/board/marks'
 import { Markdown } from '@/components/board/markdown'
 import { BlockThreads, Composer } from '@/components/board/threads'
 import { useBoard } from '@/components/board/context'
@@ -45,16 +46,18 @@ export function BlockFrame({
   }, [change, block])
 
   return (
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
     <Card
       ref={ref}
       id={`b-${block.id}`}
       data-block={block.id}
       className={cn(
-        'scroll-mt-20 overflow-hidden',
-        needsInput && 'border-human/40 ring-1 ring-human/15',
-        change === 'changed' && 'border-changed/50',
-        change === 'new' && 'border-added/50',
-        wide && 'lg:-mx-16',
+        'scroll-mt-20 gap-0 py-0',
+        needsInput && 'ring-human/40',
+        change === 'changed' && 'ring-changed/50',
+        change === 'new' && 'ring-added/50',
+        // Diagrams and mockups get more room than text where the page has it.
+        wide && 'max-w-[1040px]!',
       )}
     >
       <div className="flex items-start gap-3 px-5 pt-4 pb-3">
@@ -64,9 +67,9 @@ export function BlockFrame({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[15px] leading-snug font-semibold">{block.title ?? meta.label}</h3>
-            {needsInput && <Badge variant="human">needs you</Badge>}
-            {change === 'new' && <Badge variant="added">new</Badge>}
-            {change === 'changed' && <Badge variant="changed">updated</Badge>}
+            {needsInput && <Mark tone="human">needs you</Mark>}
+            {change === 'new' && <Mark tone="added">new</Mark>}
+            {change === 'changed' && <Mark tone="changed">updated</Mark>}
           </div>
           {block.note && <Markdown className="mt-0.5 text-muted-foreground" body={block.note} />}
           {change && block.changeNote && (
@@ -95,18 +98,14 @@ export function BlockFrame({
             <MessageSquarePlus />
             {threads > 0 ? threads : <span className="sr-only sm:not-sr-only">Comment</span>}
           </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={open ? 'Collapse' : 'Expand'}
-            className="text-muted-foreground"
-            onClick={() => setOpen((o) => !o)}
-          >
-            <ChevronDown className={cn('transition-transform', !open && '-rotate-90')} />
-          </Button>
+          <CollapsibleTrigger asChild>
+            <Button size="icon-sm" variant="ghost" aria-label={open ? 'Collapse' : 'Expand'} className="text-muted-foreground">
+              <ChevronDown className={cn('transition-transform', !open && '-rotate-90')} />
+            </Button>
+          </CollapsibleTrigger>
         </div>
       </div>
-      {open && (
+      <CollapsibleContent>
         <div className="flex flex-col gap-4 px-5 pb-5">
           <div data-quote-block={block.id}>{children}</div>
           {diff.removedItems[block.id] && (
@@ -132,8 +131,9 @@ export function BlockFrame({
             />
           )}
         </div>
-      )}
+      </CollapsibleContent>
     </Card>
+    </Collapsible>
   )
 }
 
@@ -143,5 +143,5 @@ export function ItemChange({ block, item }: { block: string; item: string }) {
   const { diff } = useBoard()
   const c = diff.items[block]?.[item]
   if (!c) return null
-  return <Badge variant={c === 'new' ? 'added' : 'changed'}>{c === 'new' ? 'new' : 'updated'}</Badge>
+  return <Mark tone={c === 'new' ? 'added' : 'changed'}>{c === 'new' ? 'new' : 'updated'}</Mark>
 }

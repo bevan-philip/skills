@@ -7,7 +7,7 @@ description: Share a plan or an implementation report with the human as an inter
 
 A plan written as a long Markdown message serves the agent's needs, not the human's. You can produce text far faster than they can read it, and a reply in chat can't point at the thing it is about. A *boundary object* is a shared artifact that both sides read in their own way. You see a structured `doc.json`. The human sees a page of diagrams, choices and steps they can click on, edit and annotate. Each side edits only its own file, and both refer to the same ids.
 
-This skill gives you that artifact: a local web app (TanStack Start + React + shadcn/ui) that renders your `doc.json` and records the human's feedback, plus a CLI that delivers that feedback back to you.
+This skill gives you that artifact: a local web app (TanStack Start + React + shadcn/ui) that renders your `doc.json` and records the human's feedback, plus a CLI that delivers that feedback back to you. The board is where the human thinks with you, not a document they sign: they can pick, edit and tune, send you off to find something out, or hand a decision back to you.
 
 ## When to use it
 
@@ -52,15 +52,21 @@ The human's attention is the budget. A good board can be reviewed in under five 
 
 - **Lead with the ask.** The `summary` is two to four sentences: what you will change, why, and what you need from them. Set `status` to a single sentence about where you are ("Plan ready, no code changed yet.").
 - **Turn silent choices into visible ones.** Every place you would otherwise pick something yourself is a `decision` with your recommendation and what each option costs in the human's terms. Every belief you are acting on but haven't verified is a `confirm` item. These two blocks are where most of a plan's risk gets caught.
-- **Show the change, not the whole system.** Mark diagram nodes and edges `added` / `changed` / `removed`. In a report, list files with a one-line summary each, and include a diff only for the hunks a reviewer should actually read.
-- **Pick the form that matches the question:**
-  - structure or data flow: `diagram`
-  - an interaction over time: `mermaid` sequence diagram
-  - comparing options across several criteria: `table`
+- **Ask only what changes the build.** A long run of questions wears the human down until they accept every default unread. Keep it to the few decisions that matter, set `reversible` on each so they can see which ones are hard to undo, and turn low-stakes choices into `confirm` items ("I'll use X unless you say otherwise").
+- **Find out instead of guessing.** Your time is cheap and the human's attention isn't. When a decision turns on something you can test (speed, how many call sites change, whether a library handles a case), try the options before you ask: a scratch branch, a worktree or a subagent per option. Put what you saw on each option as `evidence`, and the numbers as `metrics` so the page lines the options up in one table. A choice between measured results is much easier than a choice between predictions.
+- **Draw before you write.** People take in a picture far faster than prose, and they can point at it. Give every plan at least one diagram of what changes, and prefer a picture to a paragraph wherever there is structure:
+  - components and data flow: `diagram`, with nodes and edges marked `added` / `changed` / `removed`
+  - states and lifecycles (a session, an order, a job, a UI component): a Mermaid `stateDiagram-v2`, or a `diagram` using the `state`, `start` and `end` kinds
+  - branching logic (auth checks, retries, validation): a Mermaid `flowchart` with `{decision}` diamonds
+  - an interaction over time: a Mermaid `sequenceDiagram`
+  - comparing options: `metrics` on the decision's options, or a `table`
   - order of work: `steps`
   - anything with a UI: `mockup` (plan) or `image` screenshot with `before` (report)
+  - a value on a scale (spacing, shadow, timing, colour): a `mockup` with `controls`, so the human tunes it instead of choosing between three guesses
   - an interface, schema or config the human must agree to: `code`
   - prose only where nothing else fits: `markdown`
+- **One question per diagram.** Keep each diagram to about 15 nodes and give it a title that says what to look at ("What the auth middleware talks to now"). Two small diagrams beat one that shows everything.
+- **Show the change, not the whole system.** Mark what you add, change and remove. In a report, list files with a one-line summary each, and include a diff only for the hunks a reviewer should actually read.
 - **Progressive disclosure.** Put rationale in `detail` fields (nodes, steps) and set `collapsed: true` on reference blocks. The top of the page holds the questions and the headline.
 - **Group with `section` blocks.** Three to five sections, ordered by what the human must do first ("Decisions I need from you" before "How I'll do it").
 - **Stable ids.** Ids are how feedback finds its way back. Never rename an id between revisions; change the content instead. The page diffs each revision against what the human last saw. Changed blocks are marked *updated* and new ones *new*, and so are the steps, options and rows inside them; removed blocks and items are listed. The human only re-reads what moved.
@@ -76,6 +82,9 @@ The digest names every item by id and resolves labels for you. Its verdict line 
 For each kind of item:
 
 - **Decisions, answers, confirmations.** Fold them into the plan. A confirmation marked *NO* means an assumption was wrong: say what changes because of it, and either drop the item or rewrite it.
+- **Find out first.** The human wants evidence before choosing, and the note says what they want to know. Try the options for real (in a scratch branch, a worktree or a subagent each, never in the human's working tree), then add `evidence` and `metrics` to each option, keep the option ids, set `changeNote` on the decision, and wait again. The decision reopens on the page with your findings. Don't build anything that depends on it in the meantime, even if the round is an approval.
+- **Your call.** The human leaves the decision to you. Go with your recommendation, and say which one you took in `status` or the decision's `changeNote`.
+- **Tuned values.** The human set a mockup's controls to the values they want. Build with those values, and set each control's `value` to match so the mockup shows what was agreed.
 - **A choice with a note.** The human often picks an option and uses the note to change it ("Postgres, but in its own schema"). Rewrite that option in place: its `label`, `summary`, `pros` and `cons` should describe what you will now build, not just a sentence of the summary. Keep the option's id so their choice stays selected, and don't add a separate option for the variant. The page marks the option *updated* and asks the human to check it.
 - **Plan edits** (remove, rename, add, reorder). These are the human editing your plan directly. Apply them to the `steps` block in `doc.json`. When you adopt a step the human added, reuse the id the digest gives you. If you disagree with an edit, keep the step and explain why in the reply to a comment. Don't silently revert it.
 - **Comments.** Reply to every one in `replies`, keyed by the comment id: `{"text": "...", "status": "resolved" | "declined" | "question" | "noted"}`. Use `question` when you need more from the human; the page then flags it as waiting on them. Pin comments on images give coordinates and the image path, so look at the image. Mockup comments give the element and its CSS selector.
@@ -97,5 +106,6 @@ A report answers "did we get what we agreed?" Use the same building blocks:
 
 - Escape carefully: `doc.json` is JSON, so quotes and newlines inside `html`, `code` and `diff` strings must be escaped. For large mockups, write an HTML file into `assets/` and use `"src": "assets/mockup.html"` instead.
 - The page reloads images and mockup files whenever `doc.json` changes. If you replace an asset in place, save `doc.json` in the same revision (updating `status` is enough).
-- `check` renders every `mermaid` block (with [Pele](https://pele.run)) and reports syntax errors with a line and column, so a broken diagram never reaches the human.
+- `check` parses every `mermaid` block (with [Pele](https://pele.run)) and reports syntax errors with a line and column, so a broken diagram never reaches the human.
+- Don't size or position diagram boxes yourself. The page measures every label and lays the graph out, so all you choose is what's in it.
 - The server binds to 127.0.0.1. In a remote or headless environment, give the human the URL and say they need a port-forward to reach it.

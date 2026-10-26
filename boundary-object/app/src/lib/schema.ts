@@ -40,6 +40,11 @@ export const decisionOption = z.object({
   pros: z.array(z.string()).optional(),
   cons: z.array(z.string()).optional(),
   recommended: z.boolean().optional(),
+  // What the agent found by actually trying this option (a spike, a
+  // prototype, a measurement), as opposed to what it predicts.
+  evidence: md.optional(),
+  // Measured or counted results, compared across options in one table.
+  metrics: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
 })
 
 export const decisionBlock = z.object({
@@ -49,6 +54,9 @@ export const decisionBlock = z.object({
   context: md.optional(),
   options: z.array(decisionOption).min(2, 'a decision needs at least two options'),
   allowOther: z.boolean().default(true),
+  // Whether this is cheap to change later, so the human knows where their
+  // attention matters most.
+  reversible: z.boolean().optional(),
 })
 
 export const questionBlock = z.object({
@@ -97,12 +105,17 @@ export const nodeKind = z.enum([
   'file',
   'function',
   'note',
+  'decision',
+  'state',
+  'start',
+  'end',
 ])
 
 export const diagramBlock = z.object({
   ...base,
   type: z.literal('diagram'),
-  direction: z.enum(['LR', 'TB']).default('LR'),
+  // auto: whichever of LR and TB reads best at the width of the page.
+  direction: z.enum(['auto', 'LR', 'TB']).default('auto'),
   nodes: z
     .array(
       z.object({
@@ -126,7 +139,7 @@ export const diagramBlock = z.object({
       }),
     )
     .default([]),
-  groups: z.array(z.object({ id, label: z.string() })).default([]),
+  groups: z.array(z.object({ id, label: z.string(), parent: z.string().optional() })).default([]),
 })
 
 export const mermaidBlock = z.object({ ...base, type: z.literal('mermaid'), code: z.string() })
@@ -140,6 +153,26 @@ export const imageBlock = z.object({
   before: z.string().optional(),
 })
 
+// A knob on a mockup: the page sets the CSS custom property `var` on the
+// mockup's root as the human moves it, and sends back the values they settle on.
+export const mockupControl = z
+  .object({
+    id,
+    label: z.string(),
+    var: z.string().regex(/^--[\w-]+$/, 'a CSS custom property name such as "--shadow-blur"'),
+    type: z.enum(['range', 'select', 'color']).default('range'),
+    value: z.union([z.string(), z.number()]),
+    min: z.number().optional(),
+    max: z.number().optional(),
+    step: z.number().optional(),
+    unit: z.string().optional(),
+    options: z.array(z.string()).optional(),
+  })
+  .refine((c) => c.type !== 'range' || (c.min !== undefined && c.max !== undefined), {
+    message: 'a range control needs "min" and "max"',
+  })
+  .refine((c) => c.type !== 'select' || (c.options?.length ?? 0) > 1, { message: 'a select control needs two or more "options"' })
+
 export const mockupBlock = z
   .object({
     ...base,
@@ -147,6 +180,7 @@ export const mockupBlock = z
     html: z.string().optional(),
     src: z.string().optional(),
     height: z.number().int().min(120).max(2000).default(420),
+    controls: z.array(mockupControl).optional(),
   })
   .refine((b) => Boolean(b.html) !== Boolean(b.src), { message: 'a mockup needs exactly one of "html" or "src"' })
 
@@ -233,6 +267,7 @@ export const board = z
       }
       if (blk.type === 'steps' || blk.type === 'confirm') dupes(blk.items.map((x) => x.id), ['items'])
       if (blk.type === 'decision') dupes(blk.options.map((x) => x.id), ['options'])
+      if (blk.type === 'mockup' && blk.controls) dupes(blk.controls.map((x) => x.id), ['controls'])
       if (blk.type === 'diagram') {
         dupes(blk.nodes.map((n) => n.id), ['nodes'])
         const nodes = new Set(blk.nodes.map((n) => n.id))
@@ -247,6 +282,20 @@ export const board = z
         blk.nodes.forEach((n, j) => {
           if (n.group && !groups.has(n.group)) {
             ctx.addIssue({ code: 'custom', path: ['blocks', i, 'nodes', j, 'group'], message: `no group with id "${n.group}" in "groups"` })
+          }
+        })
+        const parentOf = new Map(blk.groups.map((g) => [g.id, g.parent]))
+        blk.groups.forEach((g, j) => {
+          if (g.parent && !groups.has(g.parent)) {
+            ctx.addIssue({ code: 'custom', path: ['blocks', i, 'groups', j, 'parent'], message: `no group with id "${g.parent}"` })
+          }
+          const chain = new Set([g.id])
+          for (let p = g.parent; p; p = parentOf.get(p)) {
+            if (chain.has(p)) {
+              ctx.addIssue({ code: 'custom', path: ['blocks', i, 'groups', j, 'parent'], message: 'groups nest in a cycle' })
+              break
+            }
+            chain.add(p)
           }
         })
       }
@@ -281,6 +330,9 @@ export const feedbackItem = z.discriminatedUnion('type', [
     option: z.string().optional(),
     other: z.string().optional(),
     note: z.string().optional(),
+    // Instead of picking: "find out first" (explore the options for real and
+    // ask again) or "your call" (the agent decides).
+    defer: z.enum(['explore', 'delegate']).optional(),
   }),
   z.object({ id: z.string(), type: z.literal('answer'), block: z.string(), text: z.string() }),
   z.object({
@@ -308,6 +360,8 @@ export const feedbackItem = z.discriminatedUnion('type', [
     title: z.string().min(1),
   }),
   z.object({ id: z.string(), type: z.literal('step-order'), block: z.string(), order: z.array(z.string()) }),
+  // The values the human settled on for a mockup's controls, by control id.
+  z.object({ id: z.string(), type: z.literal('tune'), block: z.string(), values: z.record(z.string(), z.string()) }),
 ])
 
 export const verdict = z.enum(['approve', 'changes', 'comment'])

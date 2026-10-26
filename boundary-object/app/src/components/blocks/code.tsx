@@ -6,7 +6,9 @@ import { useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { ItemComment } from '@/components/board/threads'
 import { ItemChange } from '@/components/board/block-frame'
+import { KindBadge, type MarkKind } from '@/components/board/marks'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 type Line = { text: string; kind: 'add' | 'del' | 'ctx' | 'hunk'; n?: number }
@@ -114,11 +116,11 @@ function Lines({
   )
 }
 
-const changeBadge = {
-  added: { short: 'A', variant: 'added' as const },
-  modified: { short: 'M', variant: 'changed' as const },
-  deleted: { short: 'D', variant: 'removed' as const },
-  renamed: { short: 'R', variant: 'secondary' as const },
+const changeBadge: Record<string, { short: string; kind: MarkKind }> = {
+  added: { short: 'A', kind: 'added' },
+  modified: { short: 'M', kind: 'changed' },
+  deleted: { short: 'D', kind: 'removed' },
+  renamed: { short: 'R', kind: 'secondary' },
 }
 
 export function FilesView({ block }: { block: BlockOf<'files'> }) {
@@ -134,9 +136,9 @@ export function FilesView({ block }: { block: BlockOf<'files'> }) {
         return (
           <li key={f.path} className="group flex flex-col gap-2 px-3.5 py-3" data-quote-item={f.path}>
             <div className="flex items-start gap-2.5">
-              <Badge variant={b.variant} className="mt-0.5 w-5 font-mono" title={f.change}>
+              <KindBadge kind={b.kind} className="mt-0.5 w-5 px-0 font-mono" title={f.change}>
                 {b.short}
-              </Badge>
+              </KindBadge>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2 font-mono text-[13px]">
                   {f.from && <span className="text-muted-foreground line-through">{f.from}</span>}
@@ -151,8 +153,11 @@ export function FilesView({ block }: { block: BlockOf<'files'> }) {
                 </div>
                 {f.summary && <Markdown className="mt-1 text-muted-foreground" body={f.summary} />}
                 {f.diff && (
-                  <button
-                    className="mt-1.5 flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+                  <Button
+                    variant="link"
+                    size="xs"
+                    className="mt-1 h-auto px-0 text-muted-foreground hover:text-foreground"
+                    aria-expanded={expanded}
                     onClick={() =>
                       setOpen((o) => {
                         const n = new Set(o)
@@ -162,9 +167,9 @@ export function FilesView({ block }: { block: BlockOf<'files'> }) {
                       })
                     }
                   >
-                    <ChevronRight className={cn('size-3.5 transition-transform', expanded && 'rotate-90')} />
+                    <ChevronRight className={cn('transition-transform', expanded && 'rotate-90')} />
                     {expanded ? 'Hide diff' : 'Show diff'}
-                  </button>
+                  </Button>
                 )}
               </div>
               <ItemComment block={block.id} item={f.path} label={f.path} />

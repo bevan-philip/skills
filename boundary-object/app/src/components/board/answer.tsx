@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Pencil, UserRound } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Mark } from '@/components/board/marks'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -92,7 +92,7 @@ export function AnswerText({
       {multiline ? <Textarea {...props} className="min-h-16" /> : <Input {...props} />}
       {(editing || replacing) && (
         <div className="flex items-center gap-2">
-          {replacing && value && <Badge variant="human">draft</Badge>}
+          {replacing && value && <Mark tone="human">draft</Mark>}
           <Button
             size="xs"
             variant="ghost"

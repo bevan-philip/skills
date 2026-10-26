@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type { Block, Board, FeedbackFile, FeedbackItem, Round, Target } from '@/lib/schema'
 import { answered, effectiveState, openAsks, viewSteps } from '@/lib/state'
+import { edgeLabel, fromDiagram } from '@/lib/graph'
 
 // Renders one round of human feedback as plain text for the agent. Every
 // line carries the ids the agent needs to act on it, and labels resolved
@@ -24,7 +25,13 @@ function itemName(b: Block | undefined, item: string, fallback?: string) {
   if (b?.type === 'steps') name = b.items.find((x) => x.id === item)?.title
   if (b?.type === 'confirm') name = b.items.find((x) => x.id === item)?.text
   if (b?.type === 'decision') name = b.options.find((x) => x.id === item)?.label
-  if (b?.type === 'diagram') name = b.nodes.find((x) => x.id === item)?.label
+  // Arrows are addressed as "from->to" (plus "#2" and so on for parallel ones).
+  const edge = (b?.type === 'diagram' || b?.type === 'mermaid') && item.includes('->')
+  if (b?.type === 'diagram') {
+    const g = fromDiagram(b)
+    const e = g.edges.find((x) => x.id === item)
+    name = edge ? (e ? edgeLabel(g, e) : undefined) : b.nodes.find((x) => x.id === item)?.label
+  }
   if (b?.type === 'table') {
     const rows = b.rows.map((r, i) => (Array.isArray(r) ? { id: `row-${i + 1}`, cells: r } : r))
     name = rows.find((r) => r.id === item)?.cells[0]
@@ -34,8 +41,10 @@ function itemName(b: Block | undefined, item: string, fallback?: string) {
   const kind =
     b?.type === 'steps'
       ? 'step'
-      : b?.type === 'diagram'
-        ? 'node'
+      : edge
+        ? 'arrow'
+        : b?.type === 'diagram' || b?.type === 'mermaid'
+          ? 'node'
         : b?.type === 'files'
           ? 'file'
           : b?.type === 'table'
@@ -116,6 +125,17 @@ export function renderDigest(
         out.push(`- ${blockName(b, c.block)} → cleared their earlier answer (now unanswered)`)
         continue
       }
+      if (c.defer === 'explore') {
+        out.push(`- ${blockName(b, c.block)} → FIND OUT FIRST. Don't decide this yet: try the options for real, record what you found, and ask again.`)
+        if (c.note) out.push(`  what they want to know: ${q(c.note)}`)
+        continue
+      }
+      if (c.defer === 'delegate') {
+        const rec = b?.type === 'decision' ? b.options.find((o) => o.recommended) : undefined
+        out.push(`- ${blockName(b, c.block)} → YOUR CALL. The human leaves this to you${rec ? `; your recommendation is [${rec.id}]` : ''}.`)
+        if (c.note) out.push(`  note: ${q(c.note)}`)
+        continue
+      }
       const picked = c.option
         ? itemName(b, c.option)
         : `their own answer: ${q(c.other ?? '')}`
@@ -123,6 +143,26 @@ export function renderDigest(
       const vs = rec ? (rec.id === c.option ? ' (your recommendation)' : ` (you recommended [${rec.id}])`) : ''
       out.push(`- ${blockName(b, c.block)} → ${picked}${vs}`)
       if (c.note) out.push(`  note: ${q(c.note)}`)
+    }
+  }
+
+  const tunes = of('tune')
+  if (tunes.length) {
+    out.push('', '## Tuned values')
+    for (const t of tunes) {
+      const b = blk(t.block)
+      const controls = b?.type === 'mockup' ? (b.controls ?? []) : []
+      const set = Object.entries(t.values)
+      if (!set.length) {
+        out.push(`- ${blockName(b, t.block)} → back to your values (cancels what they tuned before)`)
+        continue
+      }
+      out.push(`- ${blockName(b, t.block)}:`)
+      for (const [id, value] of set) {
+        const c = controls.find((x) => x.id === id)
+        const was = c ? `${c.value}${c.type === 'range' && c.unit ? c.unit : ''}` : undefined
+        out.push(`  - ${c ? `${c.var} (${label(c.label)})` : `[${id}]`} = ${q(value)}${was ? ` (you proposed ${q(was)})` : ''}`)
+      }
     }
   }
 
@@ -217,6 +257,7 @@ export function renderDigest(
   }
 
   const qualified = choices.some((c) => c.option && c.note)
+  const exploring = choices.some((c) => c.defer === 'explore')
   out.push(
     '',
     '## How to respond',
@@ -227,6 +268,14 @@ export function renderDigest(
         : '- Set "status" to say you are wrapping up. No need to wait again unless you change something.'
       : '- Update blocks in place and keep their ids so the human sees what changed. Set "status" to say what changed, run check, then wait again.',
   )
+  if (exploring)
+    out.push(
+      '- For each FIND OUT FIRST decision: spike the options (a scratch branch, a worktree or a subagent each, when it needs code), measure what the human asked about, and put the results on each option as `evidence` (what you tried and saw) and `metrics` (numbers to compare). Keep the option ids, set `changeNote` on the decision, and ask again; the decision reopens on the board.',
+    )
+  if (tunes.length)
+    out.push(
+      "- Treat tuned values as the human's answer for those properties: use them in the build, and set each control's `value` to match so the mockup shows what was agreed.",
+    )
   if (qualified)
     out.push(
       '- A decision above came with a note. If the note changes what the picked option means, rewrite that option in place (label, summary, pros, cons) so it names what you will actually build. Keep its id so the human\'s choice stays on it; don\'t add a new option for it.',
@@ -243,12 +292,29 @@ export function renderState(doc: Board | null, fb: FeedbackFile, revision: numbe
   for (const b of doc.blocks) {
     if (b.type === 'decision') {
       const c = s.choices.get(b.id)
-      const ans = c && answered(c, b) ? (c.option ? itemName(b, c.option) : `own answer ${q(c.other ?? '')}`) : 'unanswered'
+      const explored = s.explored.get(b.id)
+      const ans =
+        c && answered(c, b)
+          ? c.defer === 'explore'
+            ? 'find out first (waiting for your findings)'
+            : c.defer === 'delegate'
+              ? 'your call'
+              : c.option
+                ? itemName(b, c.option)
+                : `own answer ${q(c.other ?? '')}`
+          : explored
+            ? `unanswered (you reported findings after they asked you to find out first in round ${explored.round})`
+            : 'unanswered'
       out.push(`- ${blockName(b, b.id)} → ${ans}${c?.note ? `; note ${q(c.note)}` : ''}`)
     }
     if (b.type === 'question') {
       const a = s.answers.get(b.id)
       out.push(`- ${blockName(b, b.id)} → ${a ? q(a.text) : 'unanswered'}`)
+    }
+    if (b.type === 'mockup' && s.tunes.get(b.id)) {
+      const t = s.tunes.get(b.id)!
+      const set = Object.entries(t.values)
+      out.push(`- ${blockName(b, b.id)} → ${set.length ? set.map(([id, v]) => `${b.controls?.find((x) => x.id === id)?.var ?? id} = ${q(v)}`).join(', ') : 'your values'}`)
     }
     if (b.type === 'confirm') {
       for (const it of b.items) {
