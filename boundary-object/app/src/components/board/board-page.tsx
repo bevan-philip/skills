@@ -1,0 +1,488 @@
+import * as React from 'react'
+import { Link } from '@tanstack/react-router'
+import { AlertTriangle, ArrowLeftRight, Bot, Check, CheckCircle2, CircleDot, MessageSquare, Send } from 'lucide-react'
+import { Mark, type Tone } from '@/components/board/marks'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { STALE_REVISION, type Board, type BoardView, type FeedbackItem, type Verdict } from '@/lib/schema'
+import { openAsks, threadsFor } from '@/lib/state'
+import { BoardProvider, useBoard } from '@/components/board/context'
+import { BlockView } from '@/components/board/blocks'
+import { Markdown } from '@/components/board/markdown'
+import { SelectionCommenter } from '@/components/board/selection'
+import { BlockThreads } from '@/components/board/threads'
+import { ThemeToggle } from '@/components/board/theme'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
+
+export function BoardMissing({ message }: { message: string }) {
+  return (
+    <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-16">
+      <Card className="gap-2 px-6">
+        <div className="flex items-center gap-2 font-medium">
+          <AlertTriangle className="size-4 text-removed" /> This board can't be shown yet
+        </div>
+        <pre className="font-mono text-xs whitespace-pre-wrap text-muted-foreground">{message}</pre>
+        <p className="text-sm text-muted-foreground">The page refreshes by itself once the agent fixes it.</p>
+      </Card>
+      <Link to="/" className="text-sm text-human hover:underline">
+        ← All boards
+      </Link>
+    </div>
+  )
+}
+
+export function BoardPage({ view, onSubmitted }: { view: BoardView & { doc: Board }; onSubmitted: () => void }) {
+  return (
+    <BoardProvider view={view} onSubmitted={onSubmitted}>
+      <Shell />
+    </BoardProvider>
+  )
+}
+
+function Presence() {
+  const { view } = useBoard()
+  const last = view.feedback.rounds.at(-1)
+  const working = last?.deliveredAt && view.revision <= last.revision && last.verdict !== 'approve'
+  const label = view.listening
+    ? 'Agent is listening'
+    : last && !last.deliveredAt
+      ? `Agent hasn’t picked up round ${last.n}`
+      : working
+        ? `Agent is working on round ${last.n}`
+        : 'Agent not listening'
+  const tip = view.listening
+    ? 'The agent is waiting on this board right now. Sending wakes it up immediately.'
+    : working
+      ? 'The agent has your feedback. The board updates by itself when it revises.'
+      : 'The agent is not waiting right now. Anything you send is saved and handed over the next time it checks.'
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="hidden items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground md:flex">
+          <span className="relative flex size-2">
+            {view.listening && <span className="absolute inline-flex size-full animate-ping rounded-full bg-added opacity-60" />}
+            <span className={cn('relative inline-flex size-2 rounded-full', view.listening ? 'bg-added' : 'bg-muted-foreground/40')} />
+          </span>
+          {label}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>{tip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function Header({ onSend }: { onSend: () => void }) {
+  const { doc, view, draft, saving } = useBoard()
+  const count = draft.items.length
+  return (
+    <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+      <div className="flex h-14 items-center gap-3 px-4 xl:px-6">
+        <Link to="/" className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground" aria-label="All boards">
+          <ArrowLeftRight className="size-4" />
+        </Link>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-semibold">{doc.title}</span>
+          <Badge variant="outline">{doc.kind === 'plan' ? 'Plan' : 'Report'}</Badge>
+          <span className="hidden text-xs text-muted-foreground sm:inline">rev {view.revision}</span>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Presence />
+          <span className="hidden w-14 text-right text-[11px] text-muted-foreground sm:block">{saving ? 'saving…' : count ? 'saved' : ''}</span>
+          <ThemeToggle />
+          <Button variant={count ? 'default' : 'outline'} size="sm" onClick={onSend}>
+            <Send />
+            Send to agent
+            {count > 0 && <span className="rounded bg-primary-foreground/20 px-1.5 text-[11px] tabular-nums">{count}</span>}
+          </Button>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function Outline({ asks }: { asks: Set<string> }) {
+  const { doc, state, changes } = useBoard()
+  return (
+    <nav className="sticky top-20 hidden max-h-[calc(100vh-6rem)] overflow-y-auto pr-2 xl:block">
+      <div className="mb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">On this board</div>
+      <ul className="flex flex-col gap-0.5 text-[13px]">
+        {doc.blocks.map((b) => {
+          const comments = threadsFor(state, b.id).length
+          if (b.type === 'section') {
+            return (
+              <li key={b.id} className="mt-3 first:mt-0">
+                <a href={`#b-${b.id}`} className="block px-2 py-1 text-xs font-semibold text-foreground">
+                  {b.title}
+                </a>
+              </li>
+            )
+          }
+          return (
+            <li key={b.id}>
+              <a
+                href={`#b-${b.id}`}
+                className="flex items-center gap-2 rounded-md px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <span
+                  className={cn(
+                    'size-1.5 shrink-0 rounded-full',
+                    asks.has(b.id) ? 'bg-human' : changes[b.id] ? 'bg-changed' : 'bg-transparent',
+                  )}
+                />
+                <span className="truncate">{b.title ?? b.type}</span>
+                {comments > 0 && (
+                  <span className="ml-auto flex items-center gap-0.5 text-[11px] text-human">
+                    <MessageSquare className="size-3" />
+                    {comments}
+                  </span>
+                )}
+              </a>
+            </li>
+          )
+        })}
+      </ul>
+    </nav>
+  )
+}
+
+function Chip({ href, children, tone }: { href?: string; children: React.ReactNode; tone: Tone }) {
+  const c = cn('font-normal', tone === 'removed' && 'line-through decoration-removed/60', href && 'hover:brightness-95')
+  return href ? (
+    <Mark tone={tone} className={c} asChild>
+      <a href={href}>{children}</a>
+    </Mark>
+  ) : (
+    <Mark tone={tone} className={c}>
+      {children}
+    </Mark>
+  )
+}
+
+// What happened since the human's last round: whether the agent has it, and
+// what it changed, each linking to the place on the board.
+function LastRound() {
+  const { view, doc, diff } = useBoard()
+  const last = view.feedback.rounds.at(-1)
+  if (!last) return null
+  const verdict = { approve: 'approved', changes: 'asked for changes', comment: 'sent comments' }[last.verdict]
+  const title = (id: string) => doc.blocks.find((b) => b.id === id)?.title ?? id
+  const updated = Object.keys(diff.blocks).filter((id) => diff.blocks[id] === 'changed')
+  const added = Object.keys(diff.blocks).filter((id) => diff.blocks[id] === 'new')
+  const comments = view.feedback.rounds.flatMap((r) => r.items).filter((i) => i.type === 'comment')
+  const replied = diff.newReplies.flatMap((id) => {
+    const c = comments.find((x) => x.id === id)
+    return c && c.type === 'comment' ? [{ id, thread: c.replyTo ?? c.id, on: c.target.block === 'summary' ? 'the summary' : title(c.target.block) }] : []
+  })
+  const anything = updated.length + added.length + diff.removedBlocks.length + replied.length > 0
+  return (
+    <div className="flex flex-col gap-2.5 rounded-lg border bg-card px-3.5 py-3 text-[13px]">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <CircleDot className="size-3.5 text-human" />
+        <span>
+          Round {last.n}: you {verdict} at {new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
+        </span>
+        {last.deliveredAt ? (
+          <span className="flex items-center gap-1 text-added">
+            <Check className="size-3.5" /> Agent received it
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Waiting for the agent to pick it up.</span>
+        )}
+      </div>
+      {anything && (
+        <div className="flex flex-col gap-1.5 border-t pt-2.5">
+          <span className="font-medium">Since then the agent has</span>
+          {replied.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-muted-foreground">replied on</span>
+              {replied.map((r) => (
+                <Chip key={r.id} href={`#c-${r.thread}`} tone="human">
+                  {r.on}
+                </Chip>
+              ))}
+            </div>
+          )}
+          {updated.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-muted-foreground">updated</span>
+              {updated.map((id) => (
+                <Chip key={id} href={`#b-${id}`} tone="changed">
+                  {title(id)}
+                </Chip>
+              ))}
+            </div>
+          )}
+          {added.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-muted-foreground">added</span>
+              {added.map((id) => (
+                <Chip key={id} href={`#b-${id}`} tone="added">
+                  {title(id)}
+                </Chip>
+              ))}
+            </div>
+          )}
+          {diff.removedBlocks.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-muted-foreground">removed</span>
+              {diff.removedBlocks.map((b) => (
+                <Chip key={b.id} tone="removed">
+                  {b.title}
+                </Chip>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {last.verdict !== 'approve' && (
+        <p className="text-muted-foreground">
+          You're drafting round {last.n + 1}. Anything you already sent shows as sent; change it or add to it, then send again.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function Hero({ asks }: { asks: string[] }) {
+  const { doc, view } = useBoard()
+  const label = doc.kind === 'plan' ? 'Plan for your review' : 'Implementation report'
+  return (
+    <section className="flex flex-col gap-5 pt-4">
+      <div className="flex flex-col gap-3" data-quote-block="summary">
+        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</span>
+        <h1 className="text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">{doc.title}</h1>
+        {doc.summary && <Markdown large className="text-foreground/90" body={doc.summary} />}
+      </div>
+      <BlockThreads block="summary" />
+      {view.error && (
+        <Alert variant="destructive">
+          <AlertTriangle />
+          <AlertTitle>The agent's latest update has an error, so you're seeing the previous version.</AlertTitle>
+          <AlertDescription>
+            <pre className="font-mono text-xs whitespace-pre-wrap">{view.error}</pre>
+          </AlertDescription>
+        </Alert>
+      )}
+      {doc.status && (
+        <Alert className="bg-muted/70">
+          <Bot />
+          <AlertDescription className="text-foreground">{doc.status}</AlertDescription>
+        </Alert>
+      )}
+      <LastRound />
+      {asks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium text-human">The agent needs you on:</span>
+          {asks.map((id) => {
+            const b = doc.blocks.find((x) => x.id === id)
+            return (
+              <Chip key={id} href={`#b-${id}`} tone="human">
+                {b?.title ?? id}
+              </Chip>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function describe(doc: Board, it: FeedbackItem): string {
+  const blk = (id: string) => doc.blocks.find((b) => b.id === id)
+  const title = (id: string) => blk(id)?.title ?? id
+  switch (it.type) {
+    case 'comment':
+      return `${it.replyTo ? 'Reply' : 'Comment'} on ${it.target.label ?? title(it.target.block)}: “${it.text}”`
+    case 'choice': {
+      const b = blk(it.block)
+      const opt = b?.type === 'decision' ? b.options.find((o) => o.id === it.option)?.label : undefined
+      if (it.defer) return `${title(it.block)}: ${it.defer === 'explore' ? 'find out first' : 'your call'}`
+      return `${title(it.block)}: ${opt ?? (it.other ? `“${it.other}”` : 'cleared')}`
+    }
+    case 'answer':
+      return `${title(it.block)}: “${it.text}”`
+    case 'confirm': {
+      const b = blk(it.block)
+      const text = b?.type === 'confirm' ? b.items.find((x) => x.id === it.item)?.text : it.item
+      const words =
+        doc.kind === 'report'
+          ? { yes: 'works', no: 'doesn’t work', unsure: 'couldn’t check' }
+          : { yes: 'right', no: 'wrong', unsure: 'not sure' }
+      return `“${text}” — ${words[it.value]}`
+    }
+    case 'step-strike': {
+      const b = blk(it.block)
+      const step = b?.type === 'steps' ? b.items.find((x) => x.id === it.item)?.title : undefined
+      return `${it.struck ? 'Remove' : 'Keep'} step “${step ?? it.item}”`
+    }
+    case 'step-edit':
+      return `Rename step to “${it.title}”`
+    case 'step-add':
+      return `Add step “${it.title}”`
+    case 'step-order':
+      return `Reorder ${title(it.block)}`
+    case 'tune': {
+      const n = Object.keys(it.values).length
+      return n ? `Tune ${title(it.block)}: ${n} value${n === 1 ? '' : 's'}` : `Reset ${title(it.block)} to the agent's values`
+    }
+  }
+}
+
+function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange: (o: boolean) => void; asks: string[] }) {
+  const { doc, draft, submit, view } = useBoard()
+  const [verdict, setVerdict] = React.useState<Verdict | null>(null)
+  const [overall, setOverall] = React.useState('')
+  const [sending, setSending] = React.useState(false)
+  const [failure, setFailure] = React.useState<string | null>(null)
+  const options: { value: Verdict; title: string; body: string }[] =
+    doc.kind === 'plan'
+      ? [
+          { value: 'approve', title: 'Approve the plan', body: 'The agent starts building, applying your edits and answers.' },
+          { value: 'changes', title: 'Request changes', body: 'The agent revises the plan and comes back before building.' },
+          { value: 'comment', title: 'Just comments', body: 'Answers and questions only; no verdict yet.' },
+        ]
+      : [
+          { value: 'approve', title: 'Accept the work', body: 'You are happy with it. The agent wraps up.' },
+          { value: 'changes', title: 'Request changes', body: 'The agent fixes what you flagged and reports back.' },
+          { value: 'comment', title: 'Just comments', body: 'Questions only; no verdict yet.' },
+        ]
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Send to the agent</DialogTitle>
+          <DialogDescription>
+            {view.listening
+              ? 'The agent is listening and will pick this up straight away.'
+              : 'The agent is not listening right now. This is saved and delivered when it next checks.'}
+          </DialogDescription>
+        </DialogHeader>
+        {draft.items.length > 0 ? (
+          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-lg border bg-background p-3 text-[13px]">
+            {draft.items.map((it) => (
+              <div key={it.id} className="flex gap-2">
+                <span className="text-human">•</span>
+                <span className="line-clamp-2">{describe(doc, it)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No individual comments or edits — you can still send a verdict.</p>
+        )}
+        {asks.length > 0 && (
+          <Alert className="bg-changed-soft/50">
+            <AlertTriangle className="text-changed" />
+            <AlertDescription className="text-foreground">
+              Still unanswered: {asks.map((id) => doc.blocks.find((b) => b.id === id)?.title ?? id).join(', ')}. If you approve, the
+              agent goes with its recommendation.
+            </AlertDescription>
+          </Alert>
+        )}
+        <RadioGroup value={verdict ?? ''} onValueChange={(v) => setVerdict(v as Verdict)}>
+          {options.map((o) => (
+            <label
+              key={o.value}
+              className={cn(
+                'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/60',
+                verdict === o.value && 'border-primary bg-human-soft/40 ring-1 ring-primary',
+              )}
+            >
+              <RadioGroupItem value={o.value} className="mt-0.5" />
+              <span>
+                <span className="block text-sm font-medium">{o.title}</span>
+                <span className="block text-[13px] text-muted-foreground">{o.body}</span>
+              </span>
+            </label>
+          ))}
+        </RadioGroup>
+        <Textarea placeholder="Anything else the agent should know? (optional)" value={overall} onChange={(e) => setOverall(e.target.value)} />
+        {failure && <p className="text-[13px] text-removed">{failure}</p>}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Keep editing
+          </Button>
+          <Button
+            disabled={!verdict || sending}
+            onClick={async () => {
+              if (!verdict) return
+              setSending(true)
+              try {
+                setFailure(null)
+                await submit(verdict, overall)
+                setOverall('')
+                setVerdict(null)
+                onOpenChange(false)
+              } catch (e) {
+                setFailure(
+                  e instanceof Error && e.message.includes(STALE_REVISION)
+                    ? 'The agent changed the board while you were reviewing it, so nothing was sent. Look over the blocks marked updated or new, then approve again.'
+                    : 'Couldn’t reach the board server, so nothing was sent. Your feedback is still here as a draft; try again.',
+                )
+              } finally {
+                setSending(false)
+              }
+            }}
+          >
+            <Send /> {sending ? 'Sending…' : `Send round ${(view.feedback.rounds.at(-1)?.n ?? 0) + 1}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function Shell() {
+  const { doc, state, view } = useBoard()
+  const [sending, setSending] = React.useState(false)
+  const asks = openAsks(doc, state)
+  const askSet = new Set(asks)
+  const last = view.feedback.rounds.at(-1)
+  return (
+    <div className="min-h-screen pb-24">
+      <Header onSend={() => setSending(true)} />
+      {/* The outline sits at the far left; the middle column takes the rest of
+          the width and centres the content in it, so wide cards grow into free
+          space rather than over the outline. */}
+      <div className="grid gap-10 px-4 xl:grid-cols-[220px_minmax(0,1fr)_220px] xl:px-6">
+        <Outline asks={askSet} />
+        <main className="flex min-w-0 flex-col gap-5 pt-6 wrap-anywhere *:mx-auto *:w-full *:max-w-[820px] [&_button]:wrap-normal [&_table]:wrap-normal">
+          <Hero asks={asks} />
+          {doc.blocks.map((b) => (
+            <BlockView key={b.id} block={b} needsInput={askSet.has(b.id)} />
+          ))}
+          <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center">
+            {last?.verdict === 'approve' && view.revision <= last.revision ? (
+              <>
+                <CheckCircle2 className="size-6 text-added" />
+                <p className="text-sm text-muted-foreground">You approved this. The agent takes it from here.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">Done reviewing? Send your comments and a verdict to the agent.</p>
+                <Button onClick={() => setSending(true)}>
+                  <Send /> Send to agent
+                </Button>
+              </>
+            )}
+          </div>
+        </main>
+        <div className="hidden xl:block" />
+      </div>
+      <SelectionCommenter />
+      <SendDialog open={sending} onOpenChange={setSending} asks={asks} />
+    </div>
+  )
+}

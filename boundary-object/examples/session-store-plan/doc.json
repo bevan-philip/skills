@@ -1,0 +1,384 @@
+{
+  "title": "Move sessions out of process memory",
+  "kind": "plan",
+  "summary": "Sessions live in a `Map` inside each API process, so every deploy logs everyone out and the second replica can't see the first one's logins. I want to move them to a shared store with a 30-day sliding expiry. **I need two decisions from you before I start:** where sessions should live, and whether users can see and revoke their other sessions.",
+  "status": "Plan ready. I haven't changed any code yet.",
+  "blocks": [
+    {
+      "id": "now",
+      "type": "section",
+      "title": "Where things stand"
+    },
+    {
+      "id": "architecture",
+      "type": "diagram",
+      "title": "Request path, before and after",
+      "note": "Green is new, amber changes, red goes away. Click a box or an arrow for detail, or to comment on it.",
+      "direction": "auto",
+      "groups": [
+        {
+          "id": "api",
+          "label": "API process (×2 replicas)"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "browser",
+          "label": "Browser",
+          "kind": "actor"
+        },
+        {
+          "id": "lb",
+          "label": "Load balancer",
+          "kind": "external",
+          "detail": "Round-robin, no sticky sessions. This is why replica B can't see replica A's logins."
+        },
+        {
+          "id": "mw",
+          "label": "auth middleware",
+          "kind": "function",
+          "group": "api",
+          "status": "changed",
+          "detail": "`src/middleware/auth.ts` — swaps `sessions.get(id)` for `await store.get(id)` and refreshes expiry at most once a minute."
+        },
+        {
+          "id": "map",
+          "label": "in-memory Map",
+          "kind": "store",
+          "group": "api",
+          "status": "removed",
+          "detail": "`src/sessions.ts`. Lost on every restart."
+        },
+        {
+          "id": "store",
+          "label": "SessionStore",
+          "kind": "service",
+          "group": "api",
+          "status": "added",
+          "detail": "New interface with `get`, `put`, `touch`, `revoke`, `listForUser`. One implementation, chosen by the storage decision below."
+        },
+        {
+          "id": "db",
+          "label": "Shared store",
+          "kind": "db",
+          "status": "added",
+          "detail": "Postgres table or Redis, depending on your choice."
+        },
+        {
+          "id": "routes",
+          "label": "route handlers",
+          "kind": "service",
+          "group": "api"
+        },
+        {
+          "id": "sweep",
+          "label": "hourly sweep job",
+          "kind": "function",
+          "status": "added",
+          "detail": "Deletes expired rows. Postgres option only; Redis expires keys itself."
+        }
+      ],
+      "edges": [
+        {
+          "from": "browser",
+          "to": "lb",
+          "label": "cookie sid"
+        },
+        {
+          "from": "lb",
+          "to": "mw"
+        },
+        {
+          "from": "mw",
+          "to": "map",
+          "status": "removed",
+          "label": "get(sid)"
+        },
+        {
+          "from": "mw",
+          "to": "store",
+          "status": "added",
+          "label": "get(sid)"
+        },
+        {
+          "from": "store",
+          "to": "db",
+          "status": "added"
+        },
+        {
+          "from": "mw",
+          "to": "routes"
+        },
+        {
+          "from": "sweep",
+          "to": "db",
+          "status": "added",
+          "label": "delete expired"
+        }
+      ]
+    },
+    {
+      "id": "assumptions",
+      "type": "confirm",
+      "title": "What I'm assuming",
+      "note": "Mark anything wrong. These change the plan.",
+      "items": [
+        {
+          "id": "replicas",
+          "text": "We run exactly two API replicas behind a load balancer with no sticky sessions."
+        },
+        {
+          "id": "postgres",
+          "text": "Postgres 15 is already in production and the API has a connection pool to it.",
+          "detail": "I found `DATABASE_URL` and `pg` in `src/db.ts`."
+        },
+        {
+          "id": "logout-ok",
+          "text": "Logging everyone out once, on the deploy that ships this, is acceptable."
+        }
+      ]
+    },
+    {
+      "id": "choices",
+      "type": "section",
+      "title": "Decisions I need from you"
+    },
+    {
+      "id": "storage",
+      "type": "decision",
+      "title": "Where sessions live",
+      "question": "Which store should back sessions?",
+      "context": "Roughly 4k active sessions, ~40 auth checks per second at peak. Hard to undo: switching stores later means another forced logout.",
+      "options": [
+        {
+          "id": "postgres",
+          "label": "Postgres table",
+          "recommended": true,
+          "summary": "A `sessions` table with an index on `expires_at`, swept hourly.",
+          "pros": [
+            "No new infrastructure",
+            "Transactional with user deletes"
+          ],
+          "cons": [
+            "One extra query per request (≈1 ms on our pool)"
+          ],
+          "evidence": "Spiked on a scratch branch against a copy of prod data: the extra query adds **1.1 ms** at p95 on our existing pool.",
+          "metrics": {
+            "p95 added per request": "1.1 ms",
+            "Files changed in the spike": 6,
+            "New services to run": 0
+          }
+        },
+        {
+          "id": "redis",
+          "label": "Redis",
+          "summary": "Keys with native TTL.",
+          "pros": [
+            "Fastest lookups",
+            "Expiry is free"
+          ],
+          "cons": [
+            "New service to run, back up and monitor"
+          ],
+          "evidence": "Spiked with a local Redis 7: **0.4 ms** at p95, but it needs a new client, a health check and a backup plan.",
+          "metrics": {
+            "p95 added per request": "0.4 ms",
+            "Files changed in the spike": 9,
+            "New services to run": 1
+          }
+        },
+        {
+          "id": "cookie",
+          "label": "Signed cookie, no server store",
+          "summary": "Put the session in an encrypted cookie.",
+          "pros": [
+            "No storage at all"
+          ],
+          "cons": [
+            "Can't revoke a session before it expires",
+            "Rules out the session list below"
+          ],
+          "metrics": {
+            "p95 added per request": "0 ms",
+            "Files changed in the spike": "not tried",
+            "New services to run": 0
+          }
+        }
+      ],
+      "reversible": false
+    },
+    {
+      "id": "devices",
+      "type": "question",
+      "title": "Session list for users",
+      "prompt": "Should users see their active sessions and be able to sign out of one remotely?",
+      "context": "It's about a day of extra work. Only possible with a server-side store.",
+      "suggestions": [
+        "Yes, in this change",
+        "Yes, but as a follow-up",
+        "No"
+      ]
+    },
+    {
+      "id": "devices-mockup",
+      "type": "mockup",
+      "title": "If yes: account settings, sessions section",
+      "note": "Rough layout only. Use **Point** to comment on an element, or tune the spacing and the button below.",
+      "height": 340,
+      "html": "<style>:root{--row-gap:12px;--radius:6px;--danger:#18181b}h2{font-size:15px;margin:0 0 12px}.row{display:flex;align-items:center;gap:12px;padding:var(--row-gap) 0;border-top:1px solid #e4e4e7}.dev{flex:1}.dev b{display:block;font-size:14px}.dev span{color:#71717a;font-size:12px}.tag{font-size:11px;background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px}button{border:1px solid #d4d4d8;background:#fff;border-radius:var(--radius);padding:6px 10px;font-size:13px}.all{margin-top:16px;background:var(--danger);color:#fff;border:0}</style><h2>Where you're signed in</h2><div class='row'><div class='dev'><b>MacBook · Firefox</b><span>London · active now</span></div><span class='tag'>this device</span></div><div class='row'><div class='dev'><b>iPhone · Safari</b><span>London · 2 hours ago</span></div><button>Sign out</button></div><div class='row'><div class='dev'><b>Windows · Chrome</b><span>Leeds · 9 days ago</span></div><button>Sign out</button></div><button class='all'>Sign out everywhere else</button>",
+      "controls": [
+        {
+          "id": "gap",
+          "label": "Row spacing",
+          "var": "--row-gap",
+          "type": "range",
+          "min": 4,
+          "max": 24,
+          "step": 1,
+          "unit": "px",
+          "value": 12
+        },
+        {
+          "id": "radius",
+          "label": "Button corners",
+          "var": "--radius",
+          "type": "range",
+          "min": 0,
+          "max": 16,
+          "step": 1,
+          "unit": "px",
+          "value": 6
+        },
+        {
+          "id": "danger",
+          "label": "\"Sign out everywhere\" colour",
+          "var": "--danger",
+          "type": "color",
+          "value": "#18181b"
+        }
+      ]
+    },
+    {
+      "id": "how",
+      "type": "section",
+      "title": "How I'll do it"
+    },
+    {
+      "id": "plan",
+      "type": "steps",
+      "title": "Steps",
+      "note": "Drag to reorder, rename, remove or add steps. I'll follow the order you leave here.",
+      "items": [
+        {
+          "id": "iface",
+          "title": "Add a SessionStore interface and an in-memory implementation",
+          "files": [
+            "src/sessions/store.ts"
+          ],
+          "detail": "The in-memory version keeps tests fast and lets me switch call sites before any storage exists."
+        },
+        {
+          "id": "callers",
+          "title": "Route the auth middleware and login/logout through SessionStore",
+          "files": [
+            "src/middleware/auth.ts",
+            "src/routes/auth.ts"
+          ]
+        },
+        {
+          "id": "backend",
+          "title": "Implement the chosen store",
+          "detail": "Postgres: migration `0042_sessions.sql` plus an hourly sweep job. Redis: client setup and a health check."
+        },
+        {
+          "id": "sliding",
+          "title": "Slide expiry forward, at most once a minute per session",
+          "detail": "Avoids a write on every request."
+        },
+        {
+          "id": "ui",
+          "title": "Session list and remote sign-out (if you want it)",
+          "files": [
+            "src/routes/account.ts",
+            "web/settings/Sessions.tsx"
+          ]
+        },
+        {
+          "id": "tests",
+          "title": "Integration test: log in on replica A, request on replica B",
+          "files": [
+            "test/sessions.int.test.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "schema",
+      "type": "code",
+      "title": "Proposed table (Postgres option)",
+      "path": "migrations/0042_sessions.sql",
+      "language": "sql",
+      "highlight": [
+        6
+      ],
+      "code": "create table sessions (\n  id          text primary key,\n  user_id     bigint not null references users(id) on delete cascade,\n  created_at  timestamptz not null default now(),\n  seen_at     timestamptz not null default now(),\n  expires_at  timestamptz not null,\n  user_agent  text,\n  ip          inet\n);\ncreate index sessions_user on sessions(user_id);\ncreate index sessions_expiry on sessions(expires_at);"
+    },
+    {
+      "id": "login-flow",
+      "type": "mermaid",
+      "title": "Login and a later request",
+      "code": "sequenceDiagram\n  participant B as Browser\n  participant A as API (replica A)\n  participant C as API (replica B)\n  participant S as SessionStore\n  B->>A: POST /login\n  A->>S: put(sid, user, expires)\n  A-->>B: Set-Cookie sid\n  B->>C: GET /me (cookie sid)\n  C->>S: get(sid)\n  S-->>C: session\n  C-->>B: 200 user"
+    },
+    {
+      "id": "lifecycle",
+      "type": "mermaid",
+      "title": "A session from login to cleanup",
+      "note": "Click a state or an arrow to comment on it.",
+      "code": "stateDiagram-v2\n  direction LR\n  [*] --> Active: login\n  Active --> Active: request (expiry slides, at most once a minute)\n  Active --> Idle: no requests\n  Idle --> Active: request within 30 days\n  Idle --> Expired: 30 days pass\n  Active --> Revoked: sign out / remote sign-out\n  Idle --> Revoked: remote sign-out\n  Expired --> [*]: hourly sweep\n  Revoked --> [*]: deleted at once\n  class Revoked added"
+    },
+    {
+      "id": "costs",
+      "type": "table",
+      "title": "What changes for a session",
+      "columns": [
+        "Event",
+        "Today",
+        "After this change"
+      ],
+      "rows": [
+        {
+          "id": "deploy",
+          "cells": [
+            "Deploy or restart",
+            "Everyone logged out",
+            "Nothing happens"
+          ],
+          "highlight": true
+        },
+        {
+          "id": "replica",
+          "cells": [
+            "Request lands on the other replica",
+            "401, log in again",
+            "Works"
+          ]
+        },
+        {
+          "id": "expiry",
+          "cells": [
+            "30 days without a request",
+            "Never expires",
+            "Expires, swept hourly"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "type": "callout",
+      "tone": "risk",
+      "title": "Risk",
+      "body": "Everyone is logged out once when this deploys, because the in-memory sessions can't be migrated. I'd ship it at a quiet hour and post a notice first."
+    }
+  ]
+}
