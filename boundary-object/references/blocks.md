@@ -221,6 +221,14 @@ A snippet the human should agree to: an interface, a schema, a config. Put it in
   "code": "create table sessions (\n  id text primary key,\n  expires_at timestamptz not null\n);" }
 ```
 
+A `code` block is also the place for shapes that are easier to read as text than as boxes: pseudocode, a call tree, a component tree (with the file each component lives in), or a shallow file tree with a `# comment` per entry. Indent by depth and leave out everything the question doesn't turn on.
+
+With `"language": "diff"`, lines starting with `+` and `-` are shown as added and removed. Without `@@` hunk headers the block is a sketch of a change to such a shape, not a patch: start every unchanged line with a space, as in a real diff, so the indentation lines up. Every line, removed ones included, is numbered from `startLine`, and a comment comes back with that number. With hunk headers, it renders as a unified diff and is numbered like one (but a diff of a real file belongs on a `files` item as `diffSrc`).
+```json
+{ "id": "call-path", "type": "code", "title": "What an authenticated request calls", "language": "diff",
+  "code": " handleRequest\n   authMiddleware\n-    sessions.get(id)\n+    await store.get(id)\n     attachUser" }
+```
+
 ## What comes back
 
 `boundary wait` prints a digest: one section per kind of feedback (Decisions, Tuned values, Answers, Confirmations, Plan edits, Comments), each line naming the block and item by id in brackets with its label, and the human's words quoted. Key `replies` on the comment ids it gives, and reuse the id it gives for any step the human added. It ends with **How to respond**, which tells you how to handle each kind of item in that round.

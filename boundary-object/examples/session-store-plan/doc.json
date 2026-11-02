@@ -313,6 +313,14 @@
       ]
     },
     {
+      "id": "call-path",
+      "type": "code",
+      "title": "What an authenticated request calls",
+      "note": "A call tree, not a patch: `+` lines are new calls, `-` lines go away.",
+      "language": "diff",
+      "code": " handleRequest\n   authMiddleware\n     readCookie\n-    sessions.get(id)\n+    await store.get(id)\n+    store.touch(id)          # at most once a minute\n     attachUser\n   router.dispatch\n     routes/auth.logout\n-      sessions.delete(id)\n+      await store.delete(id)\n"
+    },
+    {
       "id": "schema",
       "type": "code",
       "title": "Proposed table (Postgres option)",

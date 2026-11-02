@@ -16,7 +16,7 @@ Use a board when the human's input changes what you build, and the input is easi
 - **Planning** a change that has real decisions in it: architecture, data model, UX, scope, ordering, risky migrations.
 - **Reporting** after a substantial change. Show what you built against the plan, what deviated and why, and what the human should check.
 
-Don't use one for a quick question you could ask in a sentence, a one-file fix, or anything the human said to just do. A board costs the human a context switch; it has to save them more than that.
+Don't use one for a quick question you could ask in a sentence, a one-file fix, or anything the human said to just do. A board costs the human a context switch; it has to save them more than that. If a picture would still help with a small question, put it in chat: a call tree, a file tree or a Mermaid diagram in a fenced block costs the human nothing to open.
 
 ## The CLI
 
@@ -61,12 +61,20 @@ The human's attention is the budget. A good board can be reviewed in under five 
   - an interaction over time: a Mermaid `sequenceDiagram`
   - comparing options: `metrics` on the decision's options, or a `table`
   - order of work: `steps`
+  - logic or an algorithm: pseudocode in a `code` block
+  - runtime control flow: a call tree in a `code` block, indented by call depth
+  - UI structure: a component tree in a `code` block, with the file each component lives in and the hooks or state that matter
+  - what each file or module owns, or a broad refactor: a shallow file tree in a `code` block, with a `# comment` per entry
+  - a change to any of those: the same shape in a `code` block with `"language": "diff"`, marking new lines `+` and removed lines `-`
   - anything with a UI: `mockup` (plan) or `image` screenshot with `before` (report)
   - a value on a scale (spacing, shadow, timing, colour): a `mockup` with `controls`, so the human tunes it instead of choosing between three guesses
   - an interface, schema or config the human must agree to: `code`
   - prose only where nothing else fits: `markdown`
+- **Pick the smallest view that makes the point.** A six-line call tree often says more than a diagram of the same calls, and it is quicker to comment on line by line. When the shape already exists and the point is what changes, show it as a diff in the shape of the topic: a component-tree diff for a UI change, a file-tree diff for a reshuffle, a call-tree diff for a new hop, a pseudocode diff for new control flow. Show the whole shape instead when most of it is new, when leaving out the context would hide who owns what or what runs in which order, or when the human needs the target shape to copy. A question needs one or two views, not every kind of block the board supports.
 - **One question per diagram.** Keep each diagram to about 15 nodes and give it a title that says what to look at ("What the auth middleware talks to now"). Two small diagrams beat one that shows everything.
-- **Show the change, not the whole system.** Mark what you add, change and remove. In a report, list files with a one-line summary each, and include a diff only for the hunks a reviewer should actually read.
+- **Show the change, not the whole system.** Mark what you add, change and remove, and keep only the calls, files, props, states and boundaries the question turns on. In a report, list files with a one-line summary each, and include a diff only for the hunks a reviewer should actually read.
+- **Keep the words next to the picture.** The sentence that tells the human what to look at goes in the block's `note`, not in a `markdown` block above it.
+- **Make mockups look like the product.** Take colours, type, spacing and component styles from the project's CSS or design tokens, and use real labels and data, not placeholder text. The human can react to a faithful sketch; a grey wireframe makes them imagine the result.
 - **Progressive disclosure.** Put rationale in `detail` fields (nodes, steps) and set `collapsed: true` on reference blocks. The top of the page holds the questions and the headline.
 - **Group with `section` blocks.** Three to five sections, ordered by what the human must do first ("Decisions I need from you" before "How I'll do it").
 - **Stable ids.** Ids are how feedback finds its way back. Never rename an id between revisions; change the content instead. The page diffs each revision against what the human last saw. Changed blocks are marked *updated* and new ones *new*, and so are the steps, options and rows inside them; removed blocks and items are listed. The human only re-reads what moved.
