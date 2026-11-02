@@ -138,7 +138,9 @@ export function renderDigest(
       }
       if (c.defer === 'delegate') {
         const rec = b?.type === 'decision' ? b.options.find((o) => o.recommended) : undefined
-        out.push(`- ${blockName(b, c.block)} → YOUR CALL. The human leaves this to you${rec ? `; your recommendation is [${rec.id}]` : ''}.`)
+        out.push(
+          `- ${blockName(b, c.block)} → YOUR CALL. The human leaves this to you${rec ? `; your recommendation is [${rec.id}]` : ''}. Say which option you took in "status" or the decision's "changeNote".`,
+        )
         if (c.note) out.push(`  note: ${q(c.note)}`)
         continue
       }
@@ -264,12 +266,16 @@ export function renderDigest(
     out.push('', `Left unanswered (use your recommendation): ${still.map((id) => `[${id}]`).join(', ')}.`)
   }
 
+  // Guidance for each kind of item rides along only when that kind came back,
+  // so SKILL.md doesn't have to carry all of it up front.
   const qualified = choices.some((c) => c.option && c.note)
   const exploring = choices.some((c) => c.defer === 'explore')
+  const wrong = confirms.some((c) => c.value === 'no')
+  const pinned = comments.some((c) => c.target?.pin && !c.target.element)
   out.push(
     '',
     '## How to respond',
-    '- Reply to each comment by adding `"replies": { "<comment id>": { "text": "...", "status": "resolved" | "declined" | "question" | "noted" } }` to doc.json.',
+    '- Reply to each comment by adding `"replies": { "<comment id>": { "text": "...", "status": "resolved" | "declined" | "question" | "noted" } }` to doc.json. Use "question" when you need more from the human; the page flags it as waiting on them.',
     round.verdict === 'approve'
       ? doc.kind === 'plan'
         ? '- Set "status" to what you are building now, then build it. When you are done, report back on a new board with kind "report".'
@@ -278,12 +284,23 @@ export function renderDigest(
   )
   if (exploring)
     out.push(
-      '- For each FIND OUT FIRST decision: spike the options (a scratch branch, a worktree or a subagent each, when it needs code), measure what the human asked about, and put the results on each option as `evidence` (what you tried and saw) and `metrics` (numbers to compare). Keep the option ids, set `changeNote` on the decision, and ask again; the decision reopens on the board.',
+      '- For each FIND OUT FIRST decision: spike the options (a scratch branch, a worktree or a subagent each when it needs code, never the human\'s working tree), measure what the human asked about, and put the results on each option as `evidence` (what you tried and saw) and `metrics` (numbers to compare). Keep the option ids, set `changeNote` on the decision, and ask again; the decision reopens on the board. Until they answer it, build nothing that depends on it, even if this round approves the rest.',
     )
   if (tunes.length)
     out.push(
       "- Treat tuned values as the human's answer for those properties: use them in the build, and set each control's `value` to match so the mockup shows what was agreed.",
     )
+  if (wrong)
+    out.push(
+      doc.kind === 'plan'
+        ? '- A confirmation marked NO means an assumption was wrong. Say what changes because of it, and drop or rewrite the item.'
+        : '- A check marked DOES NOT WORK is a bug to fix before wrapping up. Fix it, say what you changed in the block\'s `changeNote`, and wait again.',
+    )
+  if (edits.length)
+    out.push(
+      '- Plan edits are the human editing your steps. Apply the ones you accept to the steps block in doc.json, reusing the id given for each added step. If you disagree with one, keep your step and say why in a comment reply; never revert an edit silently. Once you revise the doc, the page shows your version instead of their overlay.',
+    )
+  if (pinned) out.push('- For a pin on an image, open the image file named above and look at that spot.')
   if (qualified)
     out.push(
       "- A decision above came with a note. If the note only adds a detail, leave the decision as it is and carry the detail into the steps. If it changes what you would build, reopen the decision: rewrite the option to describe what you'll actually build (label, summary, pros, cons), mark it `recommended`, and set `changeNote` to say why. The page moves the human's answer into the decision's history and asks again; if they approve without picking, your recommendation stands.",

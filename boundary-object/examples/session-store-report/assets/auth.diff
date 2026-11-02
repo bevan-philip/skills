@@ -1,0 +1,14 @@
+@@ -8,9 +8,14 @@ export async function auth(req, res, next) {
+   const id = req.cookies.sid
+   if (!id) return unauthorized(res)
+-  const session = sessions.get(id)
+-  if (!session || session.expires < Date.now()) return unauthorized(res)
++  let session = await store.get(id)
++  if (!session) {
++    session = legacy.get(id)
++    if (session) await store.put(id, session)
++  }
++  if (!session || session.expiresAt < new Date()) return unauthorized(res)
+   req.user = session.user
+   next()
+ }
