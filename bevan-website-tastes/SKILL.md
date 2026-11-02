@@ -1,14 +1,6 @@
 ---
-name: editorial-ui
+name: bevan-website-tastes
 description: Design websites and UIs with editorial, typography-first aesthetics — oversized headlines, restrained palettes, generous whitespace, and minimal UI chrome. Use when asked to design, redesign, style, or critique a website or UI in this direction.
-triggers:
-  - "design a website"
-  - "redesign this"
-  - "make it look editorial"
-  - "typography-first"
-  - "apply the design language"
-  - "style this UI"
-  - "make it more modern"
 disable-model-invocation: true
 ---
 

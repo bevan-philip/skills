@@ -1,0 +1,13 @@
+{
+  "name": "bevan-skills",
+  "owner": { "name": "Bevan Philip" },
+  "description": "Personal skills, kept here for backup and use across machines.",
+  "plugins": [
+    {
+      "name": "bevan",
+      "source": "./",
+      "description": "Interactive plan/report boards and prose style review.",
+      "skills": ["./boundary-object", "./prose-style-review"]
+    }
+  ]
+}

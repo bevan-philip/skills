@@ -1,6 +1,8 @@
 ---
 name: add-place
 description: Add a new place note to this vault's London Places collection (London Places/Places/*.md), matching the existing frontmatter schema and file layout, and using a real web geocoding lookup — never a guessed or estimated coordinate — to get accurate lat/lng, area and borough. Use this whenever the user asks to add a restaurant, cafe, bakery, bar, pub, museum, park, shop, market, or any other place to their Places list, mentions "London Places", "Places.base", or wants a new place logged for London, even if they don't spell out the exact frontmatter fields themselves.
+metadata:
+  internal: true
 ---
 
 # Add a place to London Places
