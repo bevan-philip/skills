@@ -1,6 +1,17 @@
 # Board format
 
-`doc.json` is one JSON object. `boundary check` validates it against the schema in `app/src/lib/schema.ts`; the error paths it prints match the field names here. Two complete boards are in `examples/`: a plan (`session-store-plan`) that uses every block type, and a report (`session-store-report`).
+`doc.json` is one JSON object. `boundary check` validates it against the schema in `app/src/lib/schema.ts`; the error paths it prints match the field names here. You don't need more than this page to write a board. If you want a complete one to copy from, `examples/` has a plan that uses every block type and a report.
+
+**Long text goes in files.** Paths are relative to the board directory, and the files must sit in its `assets/` folder, which the page watches for edits:
+
+| Field | Instead of | Example |
+| --- | --- | --- |
+| `diffSrc` on a `files` item | `diff` | `git diff -- src/auth.ts > assets/auth.diff` |
+| `src` on a `code` block | `code` | `sed -n '10,40p' src/store.ts > assets/store.ts` |
+| `src` on a `mermaid` block | `code` | a `.mmd` file |
+| `src` on a `mockup` block | `html` | an `.html` file |
+
+Give one or the other, not both. The page updates when you edit the file, and `check` validates its contents as if it were inline.
 
 ## Top level
 
@@ -61,9 +72,7 @@ A heading that groups the cards after it, and the outline's grouping.
 ### `decision`
 One choice among options. Mark at most one option `recommended`. With `allowOther` (default `true`) the human can write in their own answer, and they can add a note to any choice.
 
-Instead of picking, the human can answer **Find out first** (you try the options for real and ask again) or **Your call** (you decide). See "Acting on feedback" in SKILL.md.
-
-Once the human has answered, the decision shows as decided. Changing its `question`, or an option's `label`, `summary`, `pros` or `cons`, reopens it and asks again, with the old answer kept as a history line; `check` requires a `changeNote` saying why. `evidence`, `metrics`, `context` and `recommended` can change without reopening it.
+Instead of picking, the human can answer **Find out first** (you try the options and ask again) or **Your call** (you decide); the digest says how to handle each. For which edits reopen an answered decision, see "Acting on feedback" in SKILL.md.
 
 | Field | |
 | --- | --- |
@@ -154,7 +163,7 @@ Keep a diagram to about 15 nodes; split anything bigger into two diagrams that e
 ```
 
 ### `mermaid`
-Any Mermaid diagram (Mermaid 12.1 syntax), parsed by [Pele](https://pele.run). `check` parses every diagram and rejects one with a syntax error, giving you the line and column.
+Any Mermaid diagram (Mermaid 12.1 syntax) in `code`, or in a file named by `src`, parsed by [Pele](https://pele.run). `check` parses every diagram and rejects one with a syntax error, giving you the line and column.
 
 - **Flowcharts and state diagrams** are drawn by the same layout engine as `diagram` blocks, so they get the same routing, sizing and click-to-comment boxes and arrows. Mark the change with classes named `added`, `changed` or `removed` (`A:::added`, or `class A added`); you don't need `classDef`. Write a flowchart in Mermaid when it's quicker than a `diagram` block; use a `diagram` when boxes need `detail` or icons.
 - **Everything else** (sequence diagrams above all, but also ER, class, Gantt, timelines and charts) is drawn by Pele. The human comments by pointing: they click **Point**, then a spot on the diagram, and the digest gives you the label of what they clicked.
@@ -197,52 +206,29 @@ A sketch of a UI, rendered in a sandboxed iframe: either `html` inline (a fragme
 ## Code
 
 ### `files`
-A changed-files list for reports, or the files a plan touches. `change` is `added`, `modified`, `deleted` or `renamed` (use `from` for the old path). `diff` is unified diff text; the human can expand it and comment on any line, and the digest gives you the file, the line number and the line's text.
+A changed-files list for reports, or the files a plan touches. `change` is `added`, `modified`, `deleted` or `renamed` (use `from` for the old path). `diffSrc` names a unified diff file for that one path (`git diff` output, headers and all), or give the text inline as `diff`. The human can expand it and comment on any line, and the digest gives you the file, the line number and the line's text.
 ```json
 { "id": "changes", "type": "files", "title": "Files changed",
   "items": [ { "path": "src/middleware/auth.ts", "change": "modified", "summary": "Reads sessions from the store.",
-               "diff": "@@ -10,3 +10,3 @@\n-  const s = sessions.get(id)\n+  const s = await store.get(id)\n   if (!s) return unauthorized()" } ] }
+               "diffSrc": "assets/auth.diff" },
+             { "path": "src/sessions/memory.ts", "change": "deleted", "summary": "Replaced by the store." } ] }
 ```
 
 ### `code`
-A snippet the human should agree to: an interface, a schema, a config. Lines are numbered from `startLine` (default 1), `highlight` lists line numbers to tint, and the human can comment on any line.
+A snippet the human should agree to: an interface, a schema, a config. Put it in `code`, or for more than a few lines, in a file named by `src`. Lines are numbered from `startLine` (default 1), `highlight` lists line numbers to tint, and the human can comment on any line.
 ```json
 { "id": "schema", "type": "code", "path": "migrations/0042_sessions.sql", "language": "sql", "highlight": [3],
   "code": "create table sessions (\n  id text primary key,\n  expires_at timestamptz not null\n);" }
 ```
 
+A `code` block is also the place for shapes that are easier to read as text than as boxes: pseudocode, a call tree, a component tree (with the file each component lives in), or a shallow file tree with a `# comment` per entry. Indent by depth and leave out everything the question doesn't turn on.
+
+With `"language": "diff"`, lines starting with `+` and `-` are shown as added and removed. Without `@@` hunk headers the block is a sketch of a change to such a shape, not a patch: start every unchanged line with a space, as in a real diff, so the indentation lines up. Every line, removed ones included, is numbered from `startLine`, and a comment comes back with that number. With hunk headers, it renders as a unified diff and is numbered like one (but a diff of a real file belongs on a `files` item as `diffSrc`).
+```json
+{ "id": "call-path", "type": "code", "title": "What an authenticated request calls", "language": "diff",
+  "code": " handleRequest\n   authMiddleware\n-    sessions.get(id)\n+    await store.get(id)\n     attachUser" }
+```
+
 ## What comes back
 
-`boundary wait` prints a digest like this. Ids in brackets are what you key `replies` on, or reuse when you adopt a step:
-
-```
-# Round 1 on board "session-store" — "Move sessions out of process memory"
-The human reviewed revision 1.
-Verdict: CHANGES REQUESTED. Do not start implementing. Revise doc.json to address everything below, then wait again.
-
-## Decisions
-- decision [storage] "Where sessions live" → option [postgres] "Postgres table" (your recommendation)
-  note: "We already back up Postgres; no new infra please."
-- decision [retry] "Retry API" → FIND OUT FIRST. Don't decide this yet: try the options for real, record what you found, and ask again.
-  what they want to know: "How many of the 60 call sites does each one cover without hand edits?"
-
-## Tuned values
-- mockup [card-mockup] "Card shadow":
-  - --blur ("Shadow softness") = "14px" (you proposed "8px")
-
-## Confirmations
-- confirm [assumptions] "What I'm assuming", item [logout-ok] "Logging everyone out once … is acceptable." → NO, wrong
-  note: "Not OK: support gets flooded. Keep old sessions valid for a day."
-
-## Plan edits
-- in steps [plan] "Steps": REMOVE step [sliding] "Slide expiry forward…" — reason: "Premature; measure first"
-- in steps [plan] "Steps": ADD step [fb-mvoj8x1] "Dual-read old sessions for 24h" after [tests] (reuse id "fb-mvoj8x1" if you adopt it)
-
-## Comments
-- [fb-mvoj8fgtawij] on diagram [architecture] "Request path", node [lb] "Load balancer":
-  "Could we just turn on sticky sessions as a stopgap?"
-- [fb-mvoj8ft9npbo] on mockup [devices-mockup] "Sessions section", element <button> "Sign out everywhere else" (selector: body > button.all):
-  "This should be a destructive red button and ask to confirm."
-```
-
-Plan edits are proposals. After you revise `doc.json`, the page drops its overlay of the human's edits and shows your version, so apply the edits you accept and explain in a reply any you don't.
+`boundary wait` prints a digest: one section per kind of feedback (Decisions, Tuned values, Answers, Confirmations, Plan edits, Comments), each line naming the block and item by id in brackets with its label, and the human's words quoted. Key `replies` on the comment ids it gives, and reuse the id it gives for any step the human added. It ends with **How to respond**, which tells you how to handle each kind of item in that round.

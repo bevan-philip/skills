@@ -58,7 +58,7 @@
           "path": "src/middleware/auth.ts",
           "change": "modified",
           "summary": "Reads from the store, then falls back to the legacy Map and copies the session over on a hit.",
-          "diff": "@@ -8,9 +8,14 @@ export async function auth(req, res, next) {\n   const id = req.cookies.sid\n   if (!id) return unauthorized(res)\n-  const session = sessions.get(id)\n-  if (!session || session.expires < Date.now()) return unauthorized(res)\n+  let session = await store.get(id)\n+  if (!session) {\n+    session = legacy.get(id)\n+    if (session) await store.put(id, session)\n+  }\n+  if (!session || session.expiresAt < new Date()) return unauthorized(res)\n   req.user = session.user\n   next()\n }"
+          "diffSrc": "assets/auth.diff"
         },
         { "path": "src/sessions/pg.ts", "change": "added", "summary": "Postgres implementation of `SessionStore`, with an hourly sweep of expired rows." },
         { "path": "migrations/0042_sessions.sql", "change": "added", "summary": "The table from the plan, plus the `expires_at > created_at` check you asked for." },

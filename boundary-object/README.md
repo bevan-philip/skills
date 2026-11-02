@@ -30,7 +30,7 @@ This copies the two example boards (a plan and a report) into the board director
 | Path | |
 | --- | --- |
 | `SKILL.md` | Instructions for the agent: when to use a board, the workflow, how to write a good one, how to act on feedback. |
-| `references/blocks.md` | Every block type with a JSON example, and the digest format. |
+| `references/blocks.md` | Every block type with a JSON example. |
 | `scripts/boundary.mjs` | Dependency-free CLI: `new`, `open`, `check`, `wait`, `feedback`, `list`, `stop`, `demo`. |
 | `examples/` | A plan that uses every block type, and a report with before/after screenshots. |
 | `app/` | TanStack Start + React + Tailwind v4 + shadcn/ui. `components/ui/` holds stock components from the shadcn registry (Radix base, Nova style; see `components.json`), unmodified; the board's own colours are in `components/board/marks.tsx` and `styles.css`. |
@@ -42,6 +42,8 @@ This copies the two example boards (a plan and a report) into the board director
 
 - **One server for all boards**, bound to 127.0.0.1 on port 4317 or the next free one. Boards live in `<temp dir>/boundary-object/<board-id>/` (override with `BOUNDARY_ROOT`). The server's details are recorded in `.server.json` there, and the CLI restarts it when the app is rebuilt.
 - **Each side owns one file.** The agent writes `doc.json`; the server writes `feedback.json` (an autosaved draft plus submitted rounds). Every content change to `doc.json` becomes `history/N.json`, which is how the page knows which blocks changed since your last round.
+- **Long text lives in files.** Diffs, code and Mermaid source can sit in the board's `assets/` folder (`diffSrc`, `src`) instead of escaped JSON strings, so the agent writes `git diff > assets/x.diff` rather than retyping it. The server reads them in on every reload, so history snapshots hold the text and an edit to the file alone shows up as a change.
+- **Guidance arrives with the feedback.** The digest ends with a *How to respond* section covering only the kinds of feedback in that round, so `SKILL.md` stays short.
 - **Rounds.** Your edits collect in a draft until you press **Send**, choosing *approve*, *request changes* or *just comments*. `wait` returns the oldest round the agent hasn't received and marks it delivered, and the page shows that receipt. While a `wait` is open, the page shows the agent as listening.
 - **Answers hold until the agent changes the question.** An answered decision shows as decided. If the agent later rewrites its question or options, the server works out from `history/` that the answer was given to something else, drops it, and the page asks again with the old answer as a history line. `check` makes the agent give a reason.
 - **Plan edits are proposals.** Your strikes, renames, additions and reordering overlay the agent's steps until it revises the doc. After that the doc is the truth again, so the agent has to adopt each edit or explain why it didn't.

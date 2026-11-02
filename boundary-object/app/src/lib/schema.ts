@@ -146,7 +146,13 @@ export const diagramBlock = z.object({
   groups: z.array(z.object({ id, label: z.string(), parent: z.string().optional() })).default([]),
 })
 
-export const mermaidBlock = z.object({ ...base, type: z.literal('mermaid'), code: z.string() })
+// Long text can sit in a file under the board directory instead of a JSON
+// string: `src` on mermaid and code blocks, `diffSrc` on a files item. The
+// server reads the file into `code` or `diff` before validating, so everything
+// downstream sees the text itself (see inlineSources in server/store.ts).
+const textSrc = z.string().optional()
+
+export const mermaidBlock = z.object({ ...base, type: z.literal('mermaid'), code: z.string(), src: textSrc })
 
 export const imageBlock = z.object({
   ...base,
@@ -199,6 +205,7 @@ export const filesBlock = z.object({
         from: z.string().optional(),
         summary: md.optional(),
         diff: z.string().optional(),
+        diffSrc: textSrc,
       }),
     )
     .min(1),
@@ -208,6 +215,7 @@ export const codeBlock = z.object({
   ...base,
   type: z.literal('code'),
   code: z.string(),
+  src: textSrc,
   language: z.string().optional(),
   path: z.string().optional(),
   startLine: z.number().int().min(1).default(1),

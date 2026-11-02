@@ -42,6 +42,7 @@ type Entry = {
   // Parsed history snapshots. A revision never changes once written.
   snapshots: Map<number, Board>
   watcher?: fs.FSWatcher
+  assetWatcher?: fs.FSWatcher
   reloadTimer?: ReturnType<typeof setTimeout>
   lock: Promise<unknown>
   docLock: Promise<unknown>
@@ -102,13 +103,77 @@ function describeError(raw: unknown, err: import('zod').ZodError): string {
   } as import('zod').ZodError)
 }
 
-export function parseDoc(text: string): { doc: Board | null; error: string | null; raw: unknown } {
+type Parsed = { doc: Board | null; error: string | null; raw: unknown }
+
+const notJson = (e: unknown): Parsed => ({ doc: null, error: `doc.json is not valid JSON: ${(e as Error).message}`, raw: null })
+
+// A history snapshot already holds every file's text, so it parses as is.
+export function parseDoc(text: string): Parsed {
   let raw: unknown
   try {
     raw = JSON.parse(text)
   } catch (e) {
-    return { doc: null, error: `doc.json is not valid JSON: ${(e as Error).message}`, raw: null }
+    return notJson(e)
   }
+  return validate(raw)
+}
+
+// doc.json as the agent wrote it: read `src` / `diffSrc` files in first.
+async function readDoc(text: string, dir: string): Promise<Parsed> {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (e) {
+    return notJson(e)
+  }
+  const error = await inlineSources(raw, dir)
+  return error ? { doc: null, error, raw } : validate(raw)
+}
+
+// Diffs, code and Mermaid source can be files under the board directory, so
+// the agent writes them with `git diff > assets/x.diff` instead of retyping
+// them as escaped JSON strings. The text is read into `code` / `diff` here, on
+// every reload, so the history snapshot holds the text itself and the page
+// marks a block updated when its file changes.
+async function inlineSources(raw: unknown, dir: string): Promise<string | null> {
+  const blocks = (raw as { blocks?: unknown })?.blocks
+  if (!Array.isArray(blocks)) return null
+  const out: string[] = []
+  // Only files under assets/ count, because that is the folder the server
+  // watches: a source anywhere else would go stale on the page.
+  const assets = path.join(dir, 'assets')
+  const read = async (obj: Record<string, unknown>, from: string, into: string, where: string) => {
+    const rel = obj[from]
+    if (rel === undefined) return
+    if (obj[into] !== undefined) return void out.push(`- ${where}: give "${into}" or "${from}", not both`)
+    const file = typeof rel === 'string' ? insideBoard(dir, rel) : null
+    if (!file || !file.startsWith(assets + path.sep))
+      return void out.push(`- ${where}.${from}: no file at ${JSON.stringify(rel)} in the board's assets folder (${assets})`)
+    try {
+      obj[into] = await fsp.readFile(file, 'utf8')
+    } catch (err) {
+      // Removed or unreadable since the check above: report it like any other
+      // problem, so the page keeps the last good doc instead of the reload failing.
+      out.push(`- ${where}.${from}: could not read ${JSON.stringify(rel)}: ${(err as Error).message}`)
+    }
+  }
+  for (const [i, b] of blocks.entries()) {
+    if (typeof b !== 'object' || b === null) continue
+    const blk = b as Record<string, unknown>
+    const where = `blocks.${i}${typeof blk.id === 'string' ? `(${blk.id})` : ''}`
+    if (blk.type === 'mermaid' || blk.type === 'code') {
+      await read(blk, 'src', 'code', where)
+      if (blk.code === undefined && blk.src === undefined) out.push(`- ${where}: needs "code" or "src"`)
+    }
+    if (blk.type === 'files' && Array.isArray(blk.items)) {
+      for (const [j, it] of blk.items.entries())
+        if (typeof it === 'object' && it !== null) await read(it as Record<string, unknown>, 'diffSrc', 'diff', `${where}.items.${j}`)
+    }
+  }
+  return out.length ? out.join('\n') : null
+}
+
+function validate(raw: unknown): Parsed {
   const r = boardSchema.safeParse(raw)
   if (!r.success) return { doc: null, error: describeError(raw, r.error), raw }
   const diagramErrors = mermaidErrors(r.data)
@@ -128,7 +193,8 @@ function mermaidErrors(doc: Board): string | null {
       const err = e as { message?: string; line?: number; column?: number }
       const at = err.line ? `line ${err.line}${err.column ? `, column ${err.column}` : ''}: ` : ''
       const msg = (err.message ?? String(e)).replace(/\s*\n+\s*/g, ' ').trim()
-      out.push(`- blocks.${i}(${b.id}).code: ${at}${msg}`)
+      const field = b.src ? `src (${b.src})` : 'code'
+      out.push(`- blocks.${i}(${b.id}).${field}: ${at}${msg}`)
     }
   })
   return out.length ? out.join('\n') : null
@@ -238,7 +304,7 @@ async function reload(e: Entry): Promise<boolean> {
     e.error = 'doc.json not found'
     return changed
   }
-  const parsed = parseDoc(text)
+  const parsed = await readDoc(text, e.dir)
   const { doc, raw } = parsed
   let error = parsed.error
   const normal = JSON.stringify(raw, null, 2)
@@ -307,13 +373,21 @@ async function load(id: string, dir: string): Promise<Entry> {
     e.updatedAt = (await fsp.stat(path.join(dir, 'doc.json'))).mtime.toISOString()
   } catch {}
   await reload(e)
+  // Editors and agents often write in two steps; wait for the file to settle.
+  const soon = () => {
+    clearTimeout(e.reloadTimer)
+    e.reloadTimer = setTimeout(() => refresh(e).catch((err) => console.error(`reload of ${id} failed:`, err)), 120)
+  }
   try {
     e.watcher = fs.watch(dir, (_ev, file) => {
-      if (file !== 'doc.json') return
-      clearTimeout(e.reloadTimer)
-      // Editors and agents often write in two steps; wait for the file to settle.
-      e.reloadTimer = setTimeout(() => void refresh(e), 120)
+      if (file === 'doc.json') soon()
     })
+  } catch {}
+  // A `src` or `diffSrc` file changing is a doc change too. Other assets
+  // (images, mockups) reload harmlessly: their text isn't in the doc.
+  try {
+    fs.mkdirSync(path.join(dir, 'assets'), { recursive: true })
+    e.assetWatcher = fs.watch(path.join(dir, 'assets'), { recursive: true }, soon)
   } catch {}
   return e
 }
@@ -503,7 +577,10 @@ export async function reviewedDoc(id: string, revision: number) {
 // Files referenced by the doc must sit inside the board directory.
 export function resolveAsset(id: string, rel: string): string | null {
   if (!SLUG.test(id)) return null
-  const dir = path.join(hub().root, id)
+  return insideBoard(path.join(hub().root, id), rel)
+}
+
+function insideBoard(dir: string, rel: string): string | null {
   const p = path.resolve(dir, rel)
   if (!p.startsWith(dir + path.sep)) return null
   if (path.basename(p) === 'feedback.json' || p.includes(`${path.sep}history${path.sep}`)) return null

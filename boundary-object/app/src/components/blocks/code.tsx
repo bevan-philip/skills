@@ -53,12 +53,16 @@ function Lines({
   label,
   lines,
   highlight,
+  numberRemoved = false,
 }: {
   block: string
   item?: string
   label: string
   lines: Line[]
   highlight?: Set<number>
+  // A patch numbers removed lines on the old side, so their numbers are hidden;
+  // a shape diff numbers every line in one sequence and shows them all.
+  numberRemoved?: boolean
 }) {
   const { state } = useBoard()
   const commented = new Set(
@@ -88,7 +92,7 @@ function Lines({
                 )}
               >
                 <td className="w-10 px-2 text-right align-top text-muted-foreground/70 select-none">
-                  {l.kind === 'del' ? '' : l.n}
+                  {l.kind === 'del' && !numberRemoved ? '' : l.n}
                 </td>
                 <td className="w-full px-2 align-top whitespace-pre">
                   <span className={cn('mr-2 select-none', l.kind === 'ctx' && 'invisible')}>
@@ -182,11 +186,34 @@ export function FilesView({ block }: { block: BlockOf<'files'> }) {
   )
 }
 
-export function CodeView({ block }: { block: BlockOf<'code'> }) {
-  const lines: Line[] = block.code
+// A `diff` code block without `@@` hunks is a sketch of a change to a shape
+// (a call tree, a component tree, a file tree, pseudocode), not a patch. Lines
+// are marked by their first character and numbered top to bottom, so every
+// line, removed ones included, has its own number to comment on.
+function parseShapeDiff(code: string, start: number): Line[] {
+  return code
+    .replace(/\n$/, '')
+    .split('\n')
+    .map((l, i): Line => {
+      const n = start + i
+      if (l.startsWith('+')) return { text: l.slice(1), kind: 'add', n }
+      if (l.startsWith('-')) return { text: l.slice(1), kind: 'del', n }
+      return { text: l.startsWith(' ') ? l.slice(1) : l, kind: 'ctx', n }
+    })
+}
+
+const isPatch = (block: BlockOf<'code'>) => block.language === 'diff' && /^@@ -\d/m.test(block.code)
+
+function codeLines(block: BlockOf<'code'>): Line[] {
+  if (block.language === 'diff') return isPatch(block) ? parseDiff(block.code) : parseShapeDiff(block.code, block.startLine)
+  return block.code
     .replace(/\n$/, '')
     .split('\n')
     .map((text, i) => ({ text, kind: 'ctx', n: block.startLine + i }))
+}
+
+export function CodeView({ block }: { block: BlockOf<'code'> }) {
+  const lines = codeLines(block)
   return (
     <div className="flex flex-col gap-1.5">
       {(block.path || block.language) && (
@@ -200,6 +227,7 @@ export function CodeView({ block }: { block: BlockOf<'code'> }) {
         label={block.path ?? block.title ?? 'code'}
         lines={lines}
         highlight={new Set(block.highlight ?? [])}
+        numberRemoved={block.language === 'diff' && !isPatch(block)}
       />
     </div>
   )
