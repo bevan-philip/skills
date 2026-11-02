@@ -2,7 +2,7 @@
 
 `doc.json` is one JSON object. `boundary check` validates it against the schema in `app/src/lib/schema.ts`; the error paths it prints match the field names here. You don't need more than this page to write a board. If you want a complete one to copy from, `examples/` has a plan that uses every block type and a report.
 
-**Long text goes in files.** Paths are relative to the board directory, so put files in its `assets/` folder:
+**Long text goes in files.** Paths are relative to the board directory, and the files must sit in its `assets/` folder, which the page watches for edits:
 
 | Field | Instead of | Example |
 | --- | --- | --- |

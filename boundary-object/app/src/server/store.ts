@@ -139,13 +139,23 @@ async function inlineSources(raw: unknown, dir: string): Promise<string | null> 
   const blocks = (raw as { blocks?: unknown })?.blocks
   if (!Array.isArray(blocks)) return null
   const out: string[] = []
+  // Only files under assets/ count, because that is the folder the server
+  // watches: a source anywhere else would go stale on the page.
+  const assets = path.join(dir, 'assets')
   const read = async (obj: Record<string, unknown>, from: string, into: string, where: string) => {
     const rel = obj[from]
-    const file = typeof rel === 'string' ? insideBoard(dir, rel) : null
     if (rel === undefined) return
-    if (obj[into] !== undefined) out.push(`- ${where}: give "${into}" or "${from}", not both`)
-    else if (file) obj[into] = await fsp.readFile(file, 'utf8')
-    else out.push(`- ${where}.${from}: no file at ${JSON.stringify(rel)} inside the board directory (${dir})`)
+    if (obj[into] !== undefined) return void out.push(`- ${where}: give "${into}" or "${from}", not both`)
+    const file = typeof rel === 'string' ? insideBoard(dir, rel) : null
+    if (!file || !file.startsWith(assets + path.sep))
+      return void out.push(`- ${where}.${from}: no file at ${JSON.stringify(rel)} in the board's assets folder (${assets})`)
+    try {
+      obj[into] = await fsp.readFile(file, 'utf8')
+    } catch (err) {
+      // Removed or unreadable since the check above: report it like any other
+      // problem, so the page keeps the last good doc instead of the reload failing.
+      out.push(`- ${where}.${from}: could not read ${JSON.stringify(rel)}: ${(err as Error).message}`)
+    }
   }
   for (const [i, b] of blocks.entries()) {
     if (typeof b !== 'object' || b === null) continue
@@ -366,7 +376,7 @@ async function load(id: string, dir: string): Promise<Entry> {
   // Editors and agents often write in two steps; wait for the file to settle.
   const soon = () => {
     clearTimeout(e.reloadTimer)
-    e.reloadTimer = setTimeout(() => void refresh(e), 120)
+    e.reloadTimer = setTimeout(() => refresh(e).catch((err) => console.error(`reload of ${id} failed:`, err)), 120)
   }
   try {
     e.watcher = fs.watch(dir, (_ev, file) => {
@@ -376,6 +386,7 @@ async function load(id: string, dir: string): Promise<Entry> {
   // A `src` or `diffSrc` file changing is a doc change too. Other assets
   // (images, mockups) reload harmlessly: their text isn't in the doc.
   try {
+    fs.mkdirSync(path.join(dir, 'assets'), { recursive: true })
     e.assetWatcher = fs.watch(path.join(dir, 'assets'), { recursive: true }, soon)
   } catch {}
   return e
