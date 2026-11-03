@@ -5,7 +5,7 @@ import { Mark, type Tone } from '@/components/board/marks'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { STALE_REVISION, type Board, type BoardView, type FeedbackItem, type Verdict } from '@/lib/schema'
-import { askNumbers, isChoiceBlock, openAsks, threadsFor } from '@/lib/state'
+import { askNumbers, isChoiceBlock, openAsks, shownByAsks, threadsFor } from '@/lib/state'
 import { BoardProvider, useBoard } from '@/components/board/context'
 import { BlockView } from '@/components/board/blocks'
 import { Markdown } from '@/components/board/markdown'
@@ -116,11 +116,13 @@ function Header({ onSend }: { onSend: () => void }) {
 function Outline({ asks }: { asks: Set<string> }) {
   const { doc, state, changes } = useBoard()
   const numbers = askNumbers(doc)
+  const shown = shownByAsks(doc)
   return (
     <nav className="sticky top-20 hidden max-h-[calc(100vh-6rem)] overflow-y-auto pr-2 xl:block">
       <div className="mb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">On this board</div>
       <ul className="flex flex-col gap-0.5 text-[13px]">
         {doc.blocks.map((b) => {
+          if (shown.has(b.id)) return null
           const comments = threadsFor(state, b.id).length
           if (b.type === 'section') {
             return (
@@ -450,6 +452,7 @@ function Shell() {
   const [sending, setSending] = React.useState(false)
   const asks = openAsks(doc, state)
   const askSet = new Set(asks)
+  const shown = shownByAsks(doc)
   const last = view.feedback.rounds.at(-1)
   return (
     <div className="min-h-screen pb-24">
@@ -461,9 +464,7 @@ function Shell() {
         <Outline asks={askSet} />
         <main className="flex min-w-0 flex-col gap-5 pt-6 wrap-anywhere *:mx-auto *:w-full *:max-w-[820px] [&_button]:wrap-normal [&_table]:wrap-normal">
           <Hero asks={asks} />
-          {doc.blocks.map((b) => (
-            <BlockView key={b.id} block={b} needsInput={askSet.has(b.id)} />
-          ))}
+          {doc.blocks.map((b) => (shown.has(b.id) ? null : <BlockView key={b.id} block={b} needsInput={askSet.has(b.id)} />))}
           <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center">
             {last?.verdict === 'approve' && view.revision <= last.revision ? (
               <>

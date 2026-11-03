@@ -12,6 +12,10 @@ import { blockMeta } from '@/components/board/block-meta'
 import { isChoiceBlock, pendingReopen, threadsFor } from '@/lib/state'
 import { cn } from '@/lib/utils'
 
+// Set inside a block that draws other blocks within it (an ask's `show`), so
+// they sit flat in their parent rather than as cards of their own.
+export const NestedFrame = React.createContext(false)
+
 export function BlockFrame({
   block,
   label,
@@ -34,6 +38,7 @@ export function BlockFrame({
   const meta = blockMeta(block)
   const Icon = meta.icon
   const heading = label ?? block.title ?? meta.label
+  const nested = React.useContext(NestedFrame)
   const change = changes[block.id]
   // A reopened decision shows its change note where the human's answer was.
   const reopenedHere = isChoiceBlock(block) && pendingReopen(block, view.reopened, sent) !== null
@@ -63,10 +68,11 @@ export function BlockFrame({
         change === 'changed' && 'ring-changed/50',
         change === 'new' && 'ring-added/50',
         // Diagrams and mockups get more room than text where the page has it.
-        wide && 'max-w-[1040px]!',
+        wide && !nested && 'max-w-[1040px]!',
+        nested && 'rounded-lg bg-background',
       )}
     >
-      <div className="flex items-start gap-3 px-5 pt-4 pb-3">
+      <div className={cn('flex items-start gap-3 pt-4 pb-3', nested ? 'px-4' : 'px-5')}>
         <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <Icon className="size-4" />
         </div>
@@ -112,7 +118,7 @@ export function BlockFrame({
         </div>
       </div>
       <CollapsibleContent>
-        <div className="flex flex-col gap-4 px-5 pb-5">
+        <div className={cn('flex flex-col gap-4', nested ? 'px-4 pb-4' : 'px-5 pb-5')}>
           <div data-quote-block={block.id}>{children}</div>
           {diff.removedItems[block.id] && (
             <p className="text-xs text-muted-foreground">

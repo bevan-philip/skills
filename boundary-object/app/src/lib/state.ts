@@ -224,6 +224,11 @@ export function askNumbers(doc: Board): Map<string, number> {
   return new Map(doc.blocks.filter((b) => b.type === 'ask').map((b, i) => [b.id, i + 1]))
 }
 
+// Blocks an ask draws inside itself, which the page leaves out of the main flow.
+export function shownByAsks(doc: Board): Set<string> {
+  return new Set(doc.blocks.flatMap((b) => (b.type === 'ask' ? b.show : [])))
+}
+
 // Blocks that ask the human for something and have no answer yet.
 export function openAsks(doc: Board, s: EffectiveState): string[] {
   const open: string[] = []

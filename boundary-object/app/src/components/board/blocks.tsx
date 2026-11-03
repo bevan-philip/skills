@@ -1,5 +1,6 @@
 import type { Block } from '@/lib/schema'
-import { BlockFrame } from '@/components/board/block-frame'
+import { BlockFrame, NestedFrame } from '@/components/board/block-frame'
+import { useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { BlockThreads } from '@/components/board/threads'
 import { CalloutView, ConfirmView, DecisionView, MarkdownView, QuestionView, TableView } from '@/components/blocks/basic'
@@ -38,10 +39,23 @@ export function Section({ block }: { block: Extract<Block, { type: 'section' }> 
   )
 }
 
+// An ask draws the blocks it `show`s inside itself; the page leaves them out
+// of the main flow (see shownByAsks).
 function Ask({ block, needsInput }: { block: Extract<Block, { type: 'ask' }>; needsInput: boolean }) {
+  const { doc } = useBoard()
+  const shown = block.show.flatMap((id) => doc.blocks.filter((b) => b.id === id))
+  const visuals = shown.length ? (
+    <NestedFrame.Provider value>
+      <div className="flex flex-col gap-3">
+        {shown.map((b) => (
+          <BlockView key={b.id} block={b} needsInput={false} />
+        ))}
+      </div>
+    </NestedFrame.Provider>
+  ) : null
   return (
     <BlockFrame block={block} label={useAskLabel(block)} needsInput={needsInput}>
-      <AskView block={block} />
+      <AskView block={block} visuals={visuals} />
     </BlockFrame>
   )
 }

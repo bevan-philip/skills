@@ -43,7 +43,7 @@ export function useAskLabel(block: Ask) {
 // first, and "Yes" accepts it; the alternatives are a click each. Once the
 // answer is sent the question folds to one line, so a long interview reads as
 // a record of what was settled with the open questions below it.
-export function AskView({ block }: { block: Ask }) {
+export function AskView({ block, visuals }: { block: Ask; visuals?: React.ReactNode }) {
   const { state, sent, view, choose } = useBoard()
   const before = sent.choices.get(block.id)
   const settled = Boolean(before && answered(before, block) && before.defer !== 'explore')
@@ -57,10 +57,11 @@ export function AskView({ block }: { block: Ask }) {
     <div className="flex flex-col gap-3">
       <FollowsFrom block={block} />
       {settled && !changing && !drafting ? (
-        <SettledAsk block={block} onChange={() => setChanging(true)} />
+        <SettledAsk block={block} visuals={visuals} onChange={() => setChanging(true)} />
       ) : (
         <OpenAsk
           block={block}
+          visuals={visuals}
           onKeep={
             settled && before
               ? () => {
@@ -157,7 +158,7 @@ function OptionDetail({ option: o, className }: { option: Option; className?: st
   )
 }
 
-function OpenAsk({ block, onKeep }: { block: Ask; onKeep?: () => void }) {
+function OpenAsk({ block, visuals, onKeep }: { block: Ask; visuals?: React.ReactNode; onKeep?: () => void }) {
   const { state, sent, view, choose } = useBoard()
   const current = state.choices.get(block.id)
   const before = sent.choices.get(block.id)
@@ -186,6 +187,7 @@ function OpenAsk({ block, onKeep }: { block: Ask; onKeep?: () => void }) {
         }
       />
       {block.context && <Markdown className="-mt-1 text-muted-foreground" body={block.context} />}
+      {visuals}
       {reopened && (
         <Alert className="border-changed/40 bg-changed-soft/30">
           <RotateCcw className="text-changed" />
@@ -327,7 +329,7 @@ function OpenAsk({ block, onKeep }: { block: Ask; onKeep?: () => void }) {
 }
 
 // A sent answer: the question and what the human said, with the rest folded.
-function SettledAsk({ block, onChange }: { block: Ask; onChange: () => void }) {
+function SettledAsk({ block, visuals, onChange }: { block: Ask; visuals?: React.ReactNode; onChange: () => void }) {
   const { sent } = useBoard()
   const c = sent.choices.get(block.id)!
   const option = block.options.find((o) => o.id === c.option)
@@ -346,7 +348,7 @@ function SettledAsk({ block, onChange }: { block: Ask; onChange: () => void }) {
         </Button>
       </div>
       {c.note && <Quote label="Your note" text={c.note} />}
-      {(block.context || option || others.length > 0) && (
+      {(block.context || visuals || option || others.length > 0) && (
         <Collapsible>
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="sm" className="group -ml-2 self-start text-muted-foreground">
@@ -356,6 +358,7 @@ function SettledAsk({ block, onChange }: { block: Ask; onChange: () => void }) {
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-1 flex flex-col gap-2.5">
             {block.context && <Markdown className="text-muted-foreground" body={block.context} />}
+            {visuals}
             {option && <OptionDetail option={option} />}
             {others.length > 0 && (
               <ul className="flex flex-col gap-2 text-[13px]">

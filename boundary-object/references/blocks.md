@@ -80,6 +80,7 @@ The page numbers asks Q1, Q2… in board order, so add each round's asks below t
 | `context` | Markdown under the question: what you found, what turns on it. |
 | `options` | At least one, exactly one `recommended`. Same fields as a decision's options; keep `summary` to one line of why. |
 | `after` | Ids of asks **above** this one that it builds on. The page shows "Follows from Q2 · their answer", and when the human changes one of those answers the digest names the asks that follow from it. |
+| `show` | Ids of other blocks to draw inside the question instead of on their own: a `diagram` or `mermaid` of what the answer changes, a `mockup` to react to, the `code` of an interface. Each block can be shown by one ask only, and folds away with it once answered. |
 | `reversible` | As on a decision. |
 
 ```json
@@ -87,7 +88,7 @@ The page numbers asks Q1, Q2… in board order, so add each round's asks below t
   "id": "store", "type": "ask", "title": "Session store",
   "question": "Keep sessions in a Postgres table, swept hourly?",
   "context": "We already run Postgres 15; ~40 auth checks per second at peak.",
-  "after": ["scope"],
+  "after": ["scope"], "show": ["store-diagram"],
   "options": [
     { "id": "postgres", "label": "Postgres table", "recommended": true, "summary": "No new infrastructure; one indexed read per request." },
     { "id": "redis", "label": "Redis", "summary": "Fastest, but a new service to run." }
