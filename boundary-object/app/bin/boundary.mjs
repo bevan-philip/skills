@@ -150,9 +150,18 @@ async function ensureServer() {
   ensureRoot()
   const builtAt = ensureApp()
   const info = readInfo()
-  if (info && (await health(info.port))) {
-    if (info.builtAt >= builtAt) return info.port
-    say('The board app was rebuilt; restarting its server…')
+  const running = info && (await health(info.port))
+  if (running) {
+    // The server has to be this CLI's own build, since another version may
+    // check docs against another schema. Compare for identity rather than
+    // asking which build is newer: npx keeps each version in a directory of
+    // its own, and their file times say nothing about which version is later.
+    if (running.version === VERSION && info.builtAt === builtAt) return info.port
+    say(
+      running.version === VERSION
+        ? 'The board app was rebuilt; restarting its server…'
+        : `Restarting the board server: it runs version ${running.version ?? 'unknown'}, this CLI is ${VERSION}…`,
+    )
     stopPid(info.pid)
     await new Promise((r) => setTimeout(r, 400))
   }
@@ -167,7 +176,7 @@ async function ensureServer() {
   child.unref()
   for (let i = 0; i < 60; i++) {
     if (await health(port)) {
-      fs.writeFileSync(INFO, JSON.stringify({ port, pid: child.pid, builtAt, startedAt: new Date().toISOString() }, null, 2))
+      fs.writeFileSync(INFO, JSON.stringify({ port, pid: child.pid, version: VERSION, builtAt, startedAt: new Date().toISOString() }, null, 2))
       return port
     }
     await new Promise((r) => setTimeout(r, 250))

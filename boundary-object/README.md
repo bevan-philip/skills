@@ -41,7 +41,7 @@ This copies the three example boards (an interview, a plan and a report) into th
 
 ## How it works
 
-- **One server for all boards**, bound to 127.0.0.1 on port 4317 or the next free one. Boards live in `<temp dir>/boundary-object/<board-id>/` (override with `BOUNDARY_ROOT`). The server's details are recorded in `.server.json` there, and the CLI restarts it when the app is rebuilt.
+- **One server for all boards**, bound to 127.0.0.1 on port 4317 or the next free one. Boards live in `<temp dir>/boundary-object/<board-id>/` (override with `BOUNDARY_ROOT`). The server's details are recorded in `.server.json` there. The CLI restarts the server when it isn't the CLI's own version and build, as `/api/health` and `.server.json` report them, so a newer release or a rebuilt checkout takes over.
 - **Each side owns one file.** The agent writes `doc.json`; the server writes `feedback.json` (an autosaved draft plus submitted rounds). Every content change to `doc.json` becomes `history/N.json`, which is how the page knows which blocks changed since your last round.
 - **Long text lives in files.** Diffs, code and Mermaid source can sit in the board's `assets/` folder (`diffSrc`, `src`) instead of escaped JSON strings, so the agent writes `git diff > assets/x.diff` rather than retyping it. The server reads them in on every reload, so history snapshots hold the text and an edit to the file alone shows up as a change.
 - **Guidance arrives with the feedback.** The digest ends with a *How to respond* section covering only the kinds of feedback in that round, so `SKILL.md` stays short.
