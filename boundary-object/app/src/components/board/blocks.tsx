@@ -3,7 +3,7 @@ import { BlockFrame } from '@/components/board/block-frame'
 import { Markdown } from '@/components/board/markdown'
 import { BlockThreads } from '@/components/board/threads'
 import { CalloutView, ConfirmView, DecisionView, MarkdownView, QuestionView, TableView } from '@/components/blocks/basic'
-import { AskView } from '@/components/blocks/ask'
+import { AskView, useAskLabel } from '@/components/blocks/ask'
 import { StepsView } from '@/components/blocks/steps'
 import { DiagramView } from '@/components/blocks/diagram'
 import { ImageView, MermaidGraph, MermaidView, MockupView, PointToggle, usePointing } from '@/components/blocks/visual'
@@ -38,8 +38,18 @@ export function Section({ block }: { block: Extract<Block, { type: 'section' }> 
   )
 }
 
+function Ask({ block, needsInput }: { block: Extract<Block, { type: 'ask' }>; needsInput: boolean }) {
+  return (
+    <BlockFrame block={block} label={useAskLabel(block)} needsInput={needsInput}>
+      <AskView block={block} />
+    </BlockFrame>
+  )
+}
+
 export function BlockView({ block, needsInput }: { block: Block; needsInput: boolean }) {
   switch (block.type) {
+    case 'ask':
+      return <Ask block={block} needsInput={needsInput} />
     case 'section':
       return <Section block={block} />
     case 'mermaid':
@@ -69,8 +79,6 @@ export function BlockView({ block, needsInput }: { block: Block; needsInput: boo
         return <CalloutView block={block} />
       case 'decision':
         return <DecisionView block={block} />
-      case 'ask':
-        return <AskView block={block} />
       case 'question':
         return <QuestionView block={block} />
       case 'confirm':

@@ -14,12 +14,15 @@ import { cn } from '@/lib/utils'
 
 export function BlockFrame({
   block,
+  label,
   needsInput,
   wide,
   toolbar,
   children,
 }: {
   block: Block
+  // Shown instead of the block's title, e.g. "Q3 · Session storage".
+  label?: string
   needsInput?: boolean
   wide?: boolean
   toolbar?: React.ReactNode
@@ -30,6 +33,7 @@ export function BlockFrame({
   const [composing, setComposing] = React.useState(false)
   const meta = blockMeta(block)
   const Icon = meta.icon
+  const heading = label ?? block.title ?? meta.label
   const change = changes[block.id]
   // A reopened decision shows its change note where the human's answer was.
   const reopenedHere = isChoiceBlock(block) && pendingReopen(block, view.reopened, sent) !== null
@@ -68,7 +72,7 @@ export function BlockFrame({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[15px] leading-snug font-semibold">{block.title ?? meta.label}</h3>
+            <h3 className="text-[15px] leading-snug font-semibold">{heading}</h3>
             {needsInput && <Mark tone="human">needs you</Mark>}
             {change === 'new' && <Mark tone="added">new</Mark>}
             {change === 'changed' && <Mark tone="changed">updated</Mark>}
@@ -113,10 +117,10 @@ export function BlockFrame({
           {diff.removedItems[block.id] && (
             <p className="text-xs text-muted-foreground">
               Removed since your last round:{' '}
-              {diff.removedItems[block.id].map((label, i) => (
+              {diff.removedItems[block.id].map((gone, i) => (
                 <React.Fragment key={i}>
                   {i > 0 && ', '}
-                  <span className="line-through decoration-removed/60">{label}</span>
+                  <span className="line-through decoration-removed/60">{gone}</span>
                 </React.Fragment>
               ))}
             </p>
@@ -124,7 +128,7 @@ export function BlockFrame({
           <BlockThreads block={block.id} />
           {composing && (
             <Composer
-              placeholder={`Comment on “${block.title ?? meta.label}”…`}
+              placeholder={`Comment on “${heading}”…`}
               onSubmit={(text) => {
                 addComment({ block: block.id }, text)
                 setComposing(false)

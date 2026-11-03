@@ -219,6 +219,11 @@ export function choiceLabel(c: { option?: string; other?: string; defer?: string
   return c.other ? `your own answer: ${c.other}` : ''
 }
 
+// Asks are numbered Q1, Q2… in the order they appear on the board.
+export function askNumbers(doc: Board): Map<string, number> {
+  return new Map(doc.blocks.filter((b) => b.type === 'ask').map((b, i) => [b.id, i + 1]))
+}
+
 // Blocks that ask the human for something and have no answer yet.
 export function openAsks(doc: Board, s: EffectiveState): string[] {
   const open: string[] = []

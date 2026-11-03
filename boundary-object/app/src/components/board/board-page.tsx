@@ -5,7 +5,7 @@ import { Mark, type Tone } from '@/components/board/marks'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { STALE_REVISION, type Board, type BoardView, type FeedbackItem, type Verdict } from '@/lib/schema'
-import { isChoiceBlock, openAsks, threadsFor } from '@/lib/state'
+import { askNumbers, isChoiceBlock, openAsks, threadsFor } from '@/lib/state'
 import { BoardProvider, useBoard } from '@/components/board/context'
 import { BlockView } from '@/components/board/blocks'
 import { Markdown } from '@/components/board/markdown'
@@ -115,6 +115,7 @@ function Header({ onSend }: { onSend: () => void }) {
 
 function Outline({ asks }: { asks: Set<string> }) {
   const { doc, state, changes } = useBoard()
+  const numbers = askNumbers(doc)
   return (
     <nav className="sticky top-20 hidden max-h-[calc(100vh-6rem)] overflow-y-auto pr-2 xl:block">
       <div className="mb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">On this board</div>
@@ -142,7 +143,7 @@ function Outline({ asks }: { asks: Set<string> }) {
                     asks.has(b.id) ? 'bg-human' : changes[b.id] ? 'bg-changed' : 'bg-transparent',
                   )}
                 />
-                <span className="truncate">{b.title ?? b.type}</span>
+                <span className="truncate">{b.type === 'ask' ? `Q${numbers.get(b.id)} · ${b.title ?? b.question}` : (b.title ?? b.type)}</span>
                 {comments > 0 && (
                   <span className="ml-auto flex items-center gap-0.5 text-[11px] text-human">
                     <MessageSquare className="size-3" />

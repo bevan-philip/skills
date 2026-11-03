@@ -69,6 +69,32 @@ A heading that groups the cards after it, and the outline's grouping.
 
 ## Asking the human
 
+### `ask`
+One question in a grilling round (see "Grill first" in SKILL.md). Word the `question` so that "Yes" accepts your recommendation, and mark exactly one option `recommended`: the page shows it as "I recommend", with a **Yes** button. The other options are one-click alternatives, and with `allowOther` (default `true`) the human can write their own answer. They can also add a note, or answer **Not sure — find out first**, which works as on a decision. The answer comes back in the digest with the option's id.
+
+The page numbers asks Q1, Q2… in board order, so add each round's asks below the last round's. Once the human has sent an answer, the question folds to one line showing it, with a **Change** button.
+
+| Field | |
+| --- | --- |
+| `question` | Required. One sentence, worded so "Yes" means your recommendation. |
+| `context` | Markdown under the question: what you found, what turns on it. |
+| `options` | At least one, exactly one `recommended`. Same fields as a decision's options; keep `summary` to one line of why. |
+| `after` | Ids of asks **above** this one that it builds on. The page shows "Follows from Q2 · their answer", and when the human changes one of those answers the digest names the asks that follow from it. |
+| `reversible` | As on a decision. |
+
+```json
+{
+  "id": "store", "type": "ask", "title": "Session store",
+  "question": "Keep sessions in a Postgres table, swept hourly?",
+  "context": "We already run Postgres 15; ~40 auth checks per second at peak.",
+  "after": ["scope"],
+  "options": [
+    { "id": "postgres", "label": "Postgres table", "recommended": true, "summary": "No new infrastructure; one indexed read per request." },
+    { "id": "redis", "label": "Redis", "summary": "Fastest, but a new service to run." }
+  ]
+}
+```
+
 ### `decision`
 One choice among options. Mark at most one option `recommended`. With `allowOther` (default `true`) the human can write in their own answer, and they can add a note to any choice.
 
