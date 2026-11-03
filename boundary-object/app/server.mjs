@@ -1,4 +1,4 @@
-// Production entry, started by scripts/boundary.mjs after `npm run build`.
+// Production entry, started by bin/boundary.mjs after `npm run build`.
 // Serves the built client assets and hands everything else to the TanStack
 // Start fetch handler.
 import { serve } from 'srvx'

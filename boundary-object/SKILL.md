@@ -20,7 +20,7 @@ Don't use one for a quick question you could ask in a sentence, a one-file fix, 
 
 ## The CLI
 
-Every command is `node <this skill's directory>/scripts/boundary.mjs <command>`; below, `boundary` stands for that. It needs Node 22.12 or newer. On first use it installs and builds the app in `app/`, which takes about a minute. Each board lives in its own directory under the system temp directory, never in the project or in this skill's directory. `boundary new` creates it and prints its id and paths. Every other command takes that id and works from any directory.
+Every command is `node <this skill's directory>/app/bin/boundary.mjs <command>`; below, `boundary` stands for that. It needs Node 22.12 or newer. On first use it installs and builds the app in `app/`, which takes about a minute. Each board lives in its own directory under the system temp directory, never in the project or in this skill's directory. `boundary new` creates it and prints its id and paths. Every other command takes that id and works from any directory.
 
 | Command | What it does |
 | --- | --- |

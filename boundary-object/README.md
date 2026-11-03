@@ -16,12 +16,12 @@ agent ◀── digest ── boundary wait ◀── long-poll ──┘   ▲
 
 ## Install
 
-Copy this folder into your skills directory, for example `~/.claude/skills/boundary-object`. It needs Node 22.12 or newer. The first time the agent uses it, `scripts/boundary.mjs` runs `npm ci` and builds the app (about 15–60 seconds). After that the server starts in under a second.
+Copy this folder into your skills directory, for example `~/.claude/skills/boundary-object`. It needs Node 22.12 or newer. The first time the agent uses it, `app/bin/boundary.mjs` runs `npm ci` and builds the app (about 15–60 seconds). After that the server starts in under a second.
 
 To try it without an agent, from inside any git repository:
 
 ```sh
-node ~/.claude/skills/boundary-object/scripts/boundary.mjs demo
+node ~/.claude/skills/boundary-object/app/bin/boundary.mjs demo
 ```
 
 This copies the three example boards (an interview, a plan and a report) into the board directory and opens the interview. To play the agent's side, run `wait session-store-interview` in another terminal and press **Send round 2** on the page.
@@ -32,8 +32,8 @@ This copies the three example boards (an interview, a plan and a report) into th
 | --- | --- |
 | `SKILL.md` | Instructions for the agent: when to use a board, the workflow, how to write a good one, how to act on feedback. |
 | `references/blocks.md` | Every block type with a JSON example. |
-| `scripts/boundary.mjs` | Dependency-free CLI: `new`, `open`, `check`, `wait`, `feedback`, `list`, `stop`, `demo`. |
-| `examples/` | An interview in its second round, a plan that uses every block type, and a report with before/after screenshots. |
+| `app/bin/boundary.mjs` | Dependency-free CLI: `new`, `open`, `check`, `wait`, `feedback`, `list`, `stop`, `demo`. |
+| `app/examples/` | An interview in its second round, a plan that uses every block type, and a report with before/after screenshots. |
 | `app/` | TanStack Start + React + Tailwind v4 + shadcn/ui. `components/ui/` holds stock components from the shadcn registry (Radix base, Nova style; see `components.json`), unmodified; the board's own colours are in `components/board/marks.tsx` and `styles.css`. |
 | `app/src/lib/graph.ts`, `layout.ts` | Every box-and-arrow picture: `diagram` blocks, and Mermaid flowcharts and state diagrams parsed by [Pele](https://pele.run). Laid out by [ELK](https://eclipse.dev/elk/) (layered, orthogonal routing, inline edge labels, nested groups) from labels measured in the page font, then drawn with React Flow. Other Mermaid types (sequence diagrams, charts) are rendered by Pele itself. |
 | `app/src/lib/schema.ts` | The board and feedback schemas (zod), shared by the page, the server and `check`. |
