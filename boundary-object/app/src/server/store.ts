@@ -285,7 +285,7 @@ async function unexplainedReopens(e: Entry, last: number, next: Board): Promise<
     const r = after[b.id]?.find((x) => x.revision === last + 1)
     if (!isChoiceBlock(b) || !r || b.changeNote?.trim()) return
     out.push(
-      `- blocks.${i}(${b.id}): the human answered this decision in round ${r.round} (${JSON.stringify(r.answer)}). ` +
+      `- blocks.${i}(${b.id}): the human answered this ${b.type === 'ask' ? 'question' : 'decision'} in round ${r.round} (${JSON.stringify(r.answer)}). ` +
         'Changing its question or options reopens it and asks them again, so set "changeNote" to say why it is open again. ' +
         'To keep their answer, change only recommended, evidence, metrics, context or changeNote.',
     )
