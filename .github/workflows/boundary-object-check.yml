@@ -1,0 +1,43 @@
+name: boundary-object check
+
+on:
+  pull_request:
+    paths:
+      - boundary-object/**
+      - .github/workflows/boundary-object-*.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: boundary-object/app
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # version-check compares with the merge base.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: boundary-object/app/package-lock.json
+
+      # A change to the app needs a new version, and SKILL.md has to name the
+      # release that version will make.
+      - run: npm run version-check -- "$BASE"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run typecheck
+
+      # prepack builds the app, so this is the tarball a release would ship.
+      - run: npm pack
+
+      - run: npm run smoke -- "boundary-object-$(node -p "require('./package.json').version").tgz"
