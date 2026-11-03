@@ -16,9 +16,10 @@ import {
   type Reopened,
   type Round,
   type Verdict,
+  INTERVIEW_OPEN,
   STALE_REVISION,
 } from '@/lib/schema'
-import { answered, choiceLabel, decisionSubstance, isChoiceBlock } from '@/lib/state'
+import { answered, choiceLabel, decisionSubstance, interviewOpen, isChoiceBlock, reopenedItems } from '@/lib/state'
 
 // One server for all boards. Each board lives in BOUNDARY_ROOT/<id>/:
 //   doc.json       written by the agent
@@ -504,6 +505,14 @@ export async function submit(
       verdict: input.verdict,
       overall: input.overall?.trim() || undefined,
       items: d.items,
+    }
+    // The page hides approval while the interview is open; this holds the line
+    // for every path that could still send one (a dialog left open, say).
+    // The round itself counts: an approval that clears an answer leaves the
+    // interview open too.
+    if (input.verdict === 'approve' && e.doc) {
+      const after = { ...e.feedback, rounds: [...e.feedback.rounds, r] }
+      if (interviewOpen(e.doc, after, e.revision, reopenedItems(await reopenedAnswers(e, e.revision)))) throw new Error(INTERVIEW_OPEN)
     }
     e.feedback = { draft: { items: [] }, rounds: [...e.feedback.rounds, r] }
     await saveFeedback(e)

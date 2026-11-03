@@ -229,6 +229,17 @@ export function shownByAsks(doc: Board): Set<string> {
   return new Set(doc.blocks.flatMap((b) => (b.type === 'ask' ? b.show : [])))
 }
 
+// Whether the interview is still going, so there is no plan to approve: an ask
+// the human hasn't answered in a round they sent, or answers the agent hasn't
+// revised the board for yet.
+export function interviewOpen(doc: Board, fb: FeedbackFile, revision: number, skip: ReadonlySet<string>): boolean {
+  const sent = effectiveState({ ...fb, draft: { items: [] } }, revision, skip)
+  return (
+    doc.blocks.some((b) => b.type === 'ask' && !answered(sent.choices.get(b.id), b)) ||
+    fb.rounds.some((r) => r.verdict === 'answer' && revision <= r.revision)
+  )
+}
+
 // Blocks that ask the human for something and have no answer yet.
 export function openAsks(doc: Board, s: EffectiveState): string[] {
   const open: string[] = []

@@ -461,6 +461,10 @@ export type FeedbackFile = z.infer<typeof feedbackFile>
 // Thrown when the human approves a revision older than the current doc.
 export const STALE_REVISION = 'STALE_REVISION'
 
+// Thrown when the human approves while the interview is still going: an ask
+// is unanswered, or the agent hasn't revised since their last answers.
+export const INTERVIEW_OPEN = 'INTERVIEW_OPEN'
+
 // An answer the human sent on a decision that the agent has since changed.
 // The answer was given to a question that no longer exists, so it stops
 // counting and the decision is asked again; the page keeps it as history.
