@@ -1,0 +1,99 @@
+name: boundary-object release
+
+# Releases the version in boundary-object/app/package.json if it hasn't been
+# released yet. Pull requests that change the app bump that version, so a
+# merge to main cuts one release; any other push finds it released already.
+on:
+  push:
+    branches: [main]
+    paths:
+      - boundary-object/app/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: boundary-object-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: boundary-object/app
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Find the version to release
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="boundary-object-v$version"
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "tgz=boundary-object-$version.tgz"
+          } >> "$GITHUB_OUTPUT"
+          draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)
+          if [ "$draft" = "false" ]; then
+            echo "$tag is already released."
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          elif [ "$draft" = "true" ]; then
+            echo "Deleting the draft $tag left by an earlier run."
+            gh release delete "$tag" --yes
+          fi
+
+      - if: steps.version.outputs.released != 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: boundary-object/app/package-lock.json
+
+      - if: steps.version.outputs.released != 'true'
+        run: npm ci --no-audit --no-fund
+
+      - if: steps.version.outputs.released != 'true'
+        run: npm pack
+
+      - if: steps.version.outputs.released != 'true'
+        run: npm run smoke -- "$TGZ"
+        env:
+          TGZ: ${{ steps.version.outputs.tgz }}
+
+      # Created as a draft with its asset attached, then published, so it
+      # also works with immutable releases turned on for the repository.
+      - name: Publish the release
+        if: steps.version.outputs.released != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          TGZ: ${{ steps.version.outputs.tgz }}
+        run: |
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$TGZ"
+          sha=$(sha256sum "$TGZ" | cut -d' ' -f1)
+          cat > notes.md <<EOF
+          The boundary-object CLI and board app, built from $GITHUB_SHA.
+
+          \`\`\`sh
+          npx -y --prefer-offline $url <command>
+          \`\`\`
+
+          SHA-256 of \`$TGZ\`: \`$sha\`
+          EOF
+          gh release create "$TAG" "$TGZ" --draft --target "$GITHUB_SHA" --title "boundary-object $VERSION" --notes-file notes.md
+          gh release edit "$TAG" --draft=false
+          echo "Released $url"
+
+      - name: Check the download URL serves the tarball
+        if: steps.version.outputs.released != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          TGZ: ${{ steps.version.outputs.tgz }}
+        run: |
+          curl -fsSL -o downloaded.tgz "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$TGZ"
+          cmp downloaded.tgz "$TGZ"
