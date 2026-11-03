@@ -25,7 +25,8 @@
     "dev": "vite dev",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "smoke": "node ci/smoke.mjs"
   },
   "dependencies": {
     "srvx": "1.0.7"
