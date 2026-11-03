@@ -72,7 +72,7 @@ To have the agent use your checkout instead of the release, set `BOUNDARY_CLI` t
 
 A release is a GitHub release tagged `boundary-object-v<version>` whose asset is the packed tarball. The *boundary-object release* workflow makes it when a push to `main` changes `app/` and the version in `app/package.json` has no release yet: it packs the app, smoke-tests the tarball and publishes it. `SKILL.md` names the release's URL, so the skill and the app it runs change together.
 
-To ship a change to the app, bump the version and point `SKILL.md` and this README at the new URL in the same pull request. The release appears about a minute after the merge.
+To ship a change to the app, run `npm run bump -- patch` in `app/` (or `minor` for a new feature or a change to the `doc.json` format or the CLI) in the same pull request. It bumps the version and points `SKILL.md` and this README at the new release's URL. The *boundary-object check* workflow fails a pull request that changes the app without a newer version, or whose docs name another release (`npm run version-check -- origin/main` runs the same check locally). The release appears about a minute after the merge; until then the URL in `SKILL.md` on `main` is a 404.
 
 ## Limits and ideas
 
