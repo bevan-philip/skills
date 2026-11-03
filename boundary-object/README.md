@@ -24,7 +24,7 @@ To try it without an agent, from inside any git repository:
 node ~/.claude/skills/boundary-object/scripts/boundary.mjs demo
 ```
 
-This copies the two example boards (a plan and a report) into the board directory and opens them. To play the agent's side, run `wait session-store-plan` in another terminal and press **Send to agent** on the page.
+This copies the three example boards (an interview, a plan and a report) into the board directory and opens the interview. To play the agent's side, run `wait session-store-interview` in another terminal and press **Send round 2** on the page.
 
 ## Layout
 
@@ -33,7 +33,7 @@ This copies the two example boards (a plan and a report) into the board director
 | `SKILL.md` | Instructions for the agent: when to use a board, the workflow, how to write a good one, how to act on feedback. |
 | `references/blocks.md` | Every block type with a JSON example. |
 | `scripts/boundary.mjs` | Dependency-free CLI: `new`, `open`, `check`, `wait`, `feedback`, `list`, `stop`, `demo`. |
-| `examples/` | A plan that uses every block type, and a report with before/after screenshots. |
+| `examples/` | An interview in its second round, a plan that uses every block type, and a report with before/after screenshots. |
 | `app/` | TanStack Start + React + Tailwind v4 + shadcn/ui. `components/ui/` holds stock components from the shadcn registry (Radix base, Nova style; see `components.json`), unmodified; the board's own colours are in `components/board/marks.tsx` and `styles.css`. |
 | `app/src/lib/graph.ts`, `layout.ts` | Every box-and-arrow picture: `diagram` blocks, and Mermaid flowcharts and state diagrams parsed by [Pele](https://pele.run). Laid out by [ELK](https://eclipse.dev/elk/) (layered, orthogonal routing, inline edge labels, nested groups) from labels measured in the page font, then drawn with React Flow. Other Mermaid types (sequence diagrams, charts) are rendered by Pele itself. |
 | `app/src/lib/schema.ts` | The board and feedback schemas (zod), shared by the page, the server and `check`. |
