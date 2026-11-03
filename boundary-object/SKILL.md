@@ -20,7 +20,13 @@ Don't use one for a quick question you could ask in a sentence, a one-file fix, 
 
 ## The CLI
 
-Every command is `node <this skill's directory>/app/bin/boundary.mjs <command>`; below, `boundary` stands for that. It needs Node 22.12 or newer. On first use it installs and builds the app in `app/`, which takes about a minute. Each board lives in its own directory under the system temp directory, never in the project or in this skill's directory. `boundary new` creates it and prints its id and paths. Every other command takes that id and works from any directory.
+Every command is
+
+```sh
+npx -y --prefer-offline https://github.com/bevan-philip/skills/releases/download/boundary-object-v0.1.0/boundary-object-0.1.0.tgz <command>
+```
+
+and below, `boundary` stands for that. It needs Node 22.12 or newer. The first command downloads the CLI and board app (about 3 MB), and later ones start in about a second. If the environment variable `BOUNDARY_CLI` is set, `boundary` means `node "$BOUNDARY_CLI" <command>` instead; that is a checkout of the app, used while developing this skill. Each board lives in its own directory under the system temp directory, never in the project or in this skill's directory. `boundary new` creates it and prints its id and paths. Every other command takes that id and works from any directory.
 
 | Command | What it does |
 | --- | --- |
