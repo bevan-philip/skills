@@ -10,6 +10,7 @@ import {
   ListChecks,
   ListOrdered,
   MessageCircleQuestion,
+  MessagesSquare,
   Network,
   ShieldAlert,
   Split,
@@ -33,6 +34,8 @@ export function blockMeta(b: Block): { label: string; icon: LucideIcon } {
       }
     case 'decision':
       return { label: 'Decision', icon: Split }
+    case 'ask':
+      return { label: 'Question', icon: MessagesSquare }
     case 'question':
       return { label: 'Question', icon: MessageCircleQuestion }
     case 'confirm':

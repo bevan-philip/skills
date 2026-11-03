@@ -27,6 +27,7 @@ function itemsOf(b: Block): Item[] {
     case 'confirm':
       return b.items.map((i) => ({ id: i.id, label: i.text, value: i }))
     case 'decision':
+    case 'ask':
       return b.options.map((o) => ({ id: o.id, label: o.label, value: o }))
     case 'diagram':
       return b.nodes.map((n) => ({ id: n.id, label: n.label, value: n }))

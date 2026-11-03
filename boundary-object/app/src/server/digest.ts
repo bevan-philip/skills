@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { Block, Board, FeedbackFile, FeedbackItem, Reopened, Round, Target } from '@/lib/schema'
-import { answered, effectiveState, openAsks, reopenedItems, viewSteps } from '@/lib/state'
+import { answered, effectiveState, isChoiceBlock, openAsks, reopenedItems, viewSteps } from '@/lib/state'
 import { edgeLabel, fromDiagram } from '@/lib/graph'
 
 // Renders one round of human feedback as plain text for the agent. Every
@@ -24,7 +24,7 @@ function itemName(b: Block | undefined, item: string, fallback?: string) {
   let name: string | undefined
   if (b?.type === 'steps') name = b.items.find((x) => x.id === item)?.title
   if (b?.type === 'confirm') name = b.items.find((x) => x.id === item)?.text
-  if (b?.type === 'decision') name = b.options.find((x) => x.id === item)?.label
+  if (isChoiceBlock(b)) name = b.options.find((x) => x.id === item)?.label
   // Arrows are addressed as "from->to" (plus "#2" and so on for parallel ones).
   const edge = (b?.type === 'diagram' || b?.type === 'mermaid') && item.includes('->')
   if (b?.type === 'diagram') {
@@ -49,7 +49,7 @@ function itemName(b: Block | undefined, item: string, fallback?: string) {
           ? 'file'
           : b?.type === 'table'
             ? 'row'
-            : b?.type === 'decision'
+            : isChoiceBlock(b)
               ? 'option'
               : 'item'
   if (kind === 'file') return `file ${item}`
@@ -89,6 +89,10 @@ const verdictLine: Record<Round['verdict'], Record<Board['kind'], string>> = {
   comment: {
     plan: 'COMMENTS ONLY (no verdict yet). Answer in doc.json, adjust the plan if needed, then wait again.',
     report: 'COMMENTS ONLY (no verdict yet). Answer in doc.json, then wait again.',
+  },
+  answer: {
+    plan: 'ANSWERS (a grilling round, not an approval). Do not start implementing. Fold the answers below into your design tree, ask the next round, then wait again.',
+    report: 'ANSWERS (no verdict yet). Act on the answers below, update the report, then wait again.',
   },
 }
 
@@ -137,7 +141,7 @@ export function renderDigest(
         continue
       }
       if (c.defer === 'delegate') {
-        const rec = b?.type === 'decision' ? b.options.find((o) => o.recommended) : undefined
+        const rec = isChoiceBlock(b) ? b.options.find((o) => o.recommended) : undefined
         out.push(
           `- ${blockName(b, c.block)} → YOUR CALL. The human leaves this to you${rec ? `; your recommendation is [${rec.id}]` : ''}. Say which option you took in "status" or the decision's "changeNote".`,
         )
@@ -147,7 +151,7 @@ export function renderDigest(
       const picked = c.option
         ? itemName(b, c.option)
         : `their own answer: ${q(c.other ?? '')}`
-      const rec = b?.type === 'decision' ? b.options.find((o) => o.recommended) : undefined
+      const rec = isChoiceBlock(b) ? b.options.find((o) => o.recommended) : undefined
       const vs = rec ? (rec.id === c.option ? ' (your recommendation)' : ` (you recommended [${rec.id}])`) : ''
       out.push(`- ${blockName(b, c.block)} → ${picked}${vs}`)
       const again = reopenedBefore(c.block)
@@ -315,7 +319,7 @@ export function renderState(doc: Board | null, fb: FeedbackFile, revision: numbe
   const n = fb.rounds.length
   const out: string[] = [`# Current answers on ${label(doc.title)} (${n} round${n === 1 ? '' : 's'} sent)`]
   for (const b of doc.blocks) {
-    if (b.type === 'decision') {
+    if (isChoiceBlock(b)) {
       const c = s.choices.get(b.id)
       const explored = s.explored.get(b.id)
       const again = reopened[b.id]?.at(-1)

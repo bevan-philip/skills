@@ -5,7 +5,7 @@ import { Mark, type Tone } from '@/components/board/marks'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { STALE_REVISION, type Board, type BoardView, type FeedbackItem, type Verdict } from '@/lib/schema'
-import { openAsks, threadsFor } from '@/lib/state'
+import { isChoiceBlock, openAsks, threadsFor } from '@/lib/state'
 import { BoardProvider, useBoard } from '@/components/board/context'
 import { BlockView } from '@/components/board/blocks'
 import { Markdown } from '@/components/board/markdown'
@@ -177,7 +177,7 @@ function LastRound() {
   const { view, doc, diff } = useBoard()
   const last = view.feedback.rounds.at(-1)
   if (!last) return null
-  const verdict = { approve: 'approved', changes: 'asked for changes', comment: 'sent comments' }[last.verdict]
+  const verdict = { approve: 'approved', changes: 'asked for changes', comment: 'sent comments', answer: 'answered' }[last.verdict]
   const title = (id: string) => doc.blocks.find((b) => b.id === id)?.title ?? id
   const updated = Object.keys(diff.blocks).filter((id) => diff.blocks[id] === 'changed')
   const added = Object.keys(diff.blocks).filter((id) => diff.blocks[id] === 'new')
@@ -308,7 +308,7 @@ function describe(doc: Board, it: FeedbackItem): string {
       return `${it.replyTo ? 'Reply' : 'Comment'} on ${it.target.label ?? title(it.target.block)}: “${it.text}”`
     case 'choice': {
       const b = blk(it.block)
-      const opt = b?.type === 'decision' ? b.options.find((o) => o.id === it.option)?.label : undefined
+      const opt = isChoiceBlock(b) ? b.options.find((o) => o.id === it.option)?.label : undefined
       if (it.defer) return `${title(it.block)}: ${it.defer === 'explore' ? 'find out first' : 'your call'}`
       return `${title(it.block)}: ${opt ?? (it.other ? `“${it.other}”` : 'cleared')}`
     }

@@ -63,6 +63,28 @@ export const decisionBlock = z.object({
   reversible: z.boolean().optional(),
 })
 
+// One question in a grilling interview. The agent asks every question whose
+// prerequisites are settled in one round, each with its recommended answer
+// worded so that "Yes" accepts it. Answers come back as `choice` items, as for
+// a decision.
+export const askBlock = z.object({
+  ...base,
+  type: z.literal('ask'),
+  question: z.string(),
+  context: md.optional(),
+  // Exactly one is recommended: the answer "Yes" accepts. The rest are
+  // one-click alternatives.
+  options: z.array(decisionOption).min(1, 'an ask needs at least its recommended answer'),
+  allowOther: z.boolean().default(true),
+  reversible: z.boolean().optional(),
+  // The asks above this one whose answers it builds on: its branch of the
+  // design tree.
+  after: z.array(z.string()).default([]),
+  // Blocks (a diagram, a mockup, some code) drawn inside the question
+  // instead of on their own.
+  show: z.array(z.string()).default([]),
+})
+
 export const questionBlock = z.object({
   ...base,
   type: z.literal('question'),
@@ -239,6 +261,7 @@ export const block = z.discriminatedUnion('type', [
   sectionBlock,
   calloutBlock,
   decisionBlock,
+  askBlock,
   questionBlock,
   confirmBlock,
   stepsBlock,
@@ -278,7 +301,34 @@ export const board = z
         })
       }
       if (blk.type === 'steps' || blk.type === 'confirm') dupes(blk.items.map((x) => x.id), ['items'])
-      if (blk.type === 'decision') dupes(blk.options.map((x) => x.id), ['options'])
+      if (blk.type === 'decision' || blk.type === 'ask') dupes(blk.options.map((x) => x.id), ['options'])
+      if (blk.type === 'ask') {
+        const recommended = blk.options.filter((o) => o.recommended).length
+        if (recommended !== 1) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['blocks', i, 'options'],
+            message: `mark exactly one option "recommended" (found ${recommended}): it is the answer "Yes" accepts`,
+          })
+        }
+        const above = new Set(b.blocks.slice(0, i).filter((x) => x.type === 'ask').map((x) => x.id))
+        blk.after.forEach((a, j) => {
+          if (!above.has(a)) {
+            ctx.addIssue({ code: 'custom', path: ['blocks', i, 'after', j], message: `no ask with id "${a}" above this one` })
+          }
+        })
+        blk.show.forEach((s, j) => {
+          const shown = b.blocks.find((x) => x.id === s)
+          const problem = !shown
+            ? `no block with id "${s}"`
+            : shown.type === 'ask' || shown.type === 'section'
+              ? `an ask can't show a${shown.type === 'ask' ? 'nother ask' : ' section'}`
+              : b.blocks.some((x, k) => k < i && x.type === 'ask' && x.show.includes(s))
+                ? `"${s}" is already shown by an earlier ask`
+                : null
+          if (problem) ctx.addIssue({ code: 'custom', path: ['blocks', i, 'show', j], message: problem })
+        })
+      }
       if (blk.type === 'mockup' && blk.controls) dupes(blk.controls.map((x) => x.id), ['controls'])
       if (blk.type === 'diagram') {
         dupes(blk.nodes.map((n) => n.id), ['nodes'])
@@ -376,7 +426,9 @@ export const feedbackItem = z.discriminatedUnion('type', [
   z.object({ id: z.string(), type: z.literal('tune'), block: z.string(), values: z.record(z.string(), z.string()) }),
 ])
 
-export const verdict = z.enum(['approve', 'changes', 'comment'])
+// `answer` is a grilling round: answers to the open asks, with no verdict on
+// the plan.
+export const verdict = z.enum(['approve', 'changes', 'comment', 'answer'])
 
 export const draft = z.object({
   items: z.array(feedbackItem).default([]),

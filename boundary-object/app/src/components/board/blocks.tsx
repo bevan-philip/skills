@@ -3,6 +3,7 @@ import { BlockFrame } from '@/components/board/block-frame'
 import { Markdown } from '@/components/board/markdown'
 import { BlockThreads } from '@/components/board/threads'
 import { CalloutView, ConfirmView, DecisionView, MarkdownView, QuestionView, TableView } from '@/components/blocks/basic'
+import { AskView } from '@/components/blocks/ask'
 import { StepsView } from '@/components/blocks/steps'
 import { DiagramView } from '@/components/blocks/diagram'
 import { ImageView, MermaidGraph, MermaidView, MockupView, PointToggle, usePointing } from '@/components/blocks/visual'
@@ -68,6 +69,8 @@ export function BlockView({ block, needsInput }: { block: Block; needsInput: boo
         return <CalloutView block={block} />
       case 'decision':
         return <DecisionView block={block} />
+      case 'ask':
+        return <AskView block={block} />
       case 'question':
         return <QuestionView block={block} />
       case 'confirm':
