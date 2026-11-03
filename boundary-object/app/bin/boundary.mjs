@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 // boundary: the agent's side of a board. No dependencies beyond Node >= 22.
 //
-//   node boundary.mjs new <name> [--kind plan|report] [--title "..."]
-//   node boundary.mjs open <board> [--no-browser]
-//   node boundary.mjs check <board>
-//   node boundary.mjs wait <board> [--timeout 1800]
-//   node boundary.mjs feedback <board> [--round N] [--state]
-//   node boundary.mjs list | stop | demo | path <board>
+//   boundary new <name> [--kind plan|report] [--title "..."]
+//   boundary open <board> [--no-browser]
+//   boundary check <board>
+//   boundary wait <board> [--timeout 1800]
+//   boundary feedback <board> [--round N] [--state]
+//   boundary list | stop | demo | path <board>
 //
 // Each `new` creates its own board directory under the system temp directory
 // (override with --root or BOUNDARY_ROOT), never in the project or this skill.
-// The web app in ../app is installed and built on first use.
+// A released package ships the built web app; in a checkout of the sources
+// it is installed and built on first use, and rebuilt when they change.
 
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -19,8 +20,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const SKILL = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const APP = path.join(SKILL, 'app')
+const APP = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const VERSION = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8')).version
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
 const say = (...a) => process.stderr.write(a.join(' ') + '\n')
@@ -42,7 +43,8 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2))
-const [cmd, board] = args._
+const [first, board] = args._
+const cmd = first ?? (args.version ? 'version' : undefined)
 
 function projectRoot() {
   const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' })
@@ -83,12 +85,16 @@ function run(bin, argv, what) {
 }
 
 function ensureApp() {
+  const built = path.join(APP, 'dist', 'server', 'server.js')
+  if (!fs.existsSync(path.join(APP, 'src'))) {
+    if (!fs.existsSync(built)) die(`this copy of boundary-object has neither its sources nor a build (${built})`)
+    return fs.statSync(built).mtimeMs
+  }
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
   if (!fs.existsSync(path.join(APP, 'node_modules', '.package-lock.json'))) {
     const hasLock = fs.existsSync(path.join(APP, 'package-lock.json'))
     run(npm, [hasLock ? 'ci' : 'install', '--no-audit', '--no-fund', '--loglevel=error'], 'Installing the board app (first run only)…')
   }
-  const built = path.join(APP, 'dist', 'server', 'server.js')
   const src = Math.max(
     newestMtime(path.join(APP, 'src')),
     newestMtime(path.join(APP, 'package.json')),
@@ -144,9 +150,18 @@ async function ensureServer() {
   ensureRoot()
   const builtAt = ensureApp()
   const info = readInfo()
-  if (info && (await health(info.port))) {
-    if (info.builtAt >= builtAt) return info.port
-    say('The board app was rebuilt; restarting its server…')
+  const running = info && (await health(info.port))
+  if (running) {
+    // The server has to be this CLI's own build, since another version may
+    // check docs against another schema. Compare for identity rather than
+    // asking which build is newer: npx keeps each version in a directory of
+    // its own, and their file times say nothing about which version is later.
+    if (running.version === VERSION && info.builtAt === builtAt) return info.port
+    say(
+      running.version === VERSION
+        ? 'The board app was rebuilt; restarting its server…'
+        : `Restarting the board server: it runs version ${running.version ?? 'unknown'}, this CLI is ${VERSION}…`,
+    )
     stopPid(info.pid)
     await new Promise((r) => setTimeout(r, 400))
   }
@@ -161,7 +176,7 @@ async function ensureServer() {
   child.unref()
   for (let i = 0; i < 60; i++) {
     if (await health(port)) {
-      fs.writeFileSync(INFO, JSON.stringify({ port, pid: child.pid, builtAt, startedAt: new Date().toISOString() }, null, 2))
+      fs.writeFileSync(INFO, JSON.stringify({ port, pid: child.pid, version: VERSION, builtAt, startedAt: new Date().toISOString() }, null, 2))
       return port
     }
     await new Promise((r) => setTimeout(r, 250))
@@ -302,7 +317,7 @@ async function cmdList() {
 // Copies the bundled example boards into the board directory so you can try the page.
 async function cmdDemo() {
   ensureRoot()
-  const src = path.join(SKILL, 'examples')
+  const src = path.join(APP, 'examples')
   const ids = fs.readdirSync(src).filter((d) => fs.existsSync(path.join(src, d, 'doc.json')))
   for (const id of ids) {
     const dest = path.join(ROOT, id)
@@ -332,6 +347,7 @@ const help = `boundary — share a plan or report with the human as an interacti
   stop                                          stop the board server
   path <board>                                  print the board directory
   demo                                          copy the example boards in and open them
+  version                                       print this CLI's version
 
 Boards: ${ROOT}`
 
@@ -365,6 +381,9 @@ switch (cmd) {
     break
   case 'path':
     console.log(needBoard())
+    break
+  case 'version':
+    console.log(VERSION)
     break
   default:
     console.log(help)

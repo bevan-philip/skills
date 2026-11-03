@@ -16,12 +16,14 @@ agent ◀── digest ── boundary wait ◀── long-poll ──┘   ▲
 
 ## Install
 
-Copy this folder into your skills directory, for example `~/.claude/skills/boundary-object`. It needs Node 22.12 or newer. The first time the agent uses it, `scripts/boundary.mjs` runs `npm ci` and builds the app (about 15–60 seconds). After that the server starts in under a second.
+Copy this folder into your skills directory, for example `~/.claude/skills/boundary-object`, or install the `bevan` plugin from this repository's marketplace. It needs Node 22.12 or newer.
+
+The skill runs the CLI and board app from a [GitHub release](https://github.com/bevan-philip/skills/releases) with `npx`, so nothing in the skill's folder is built or installed. `SKILL.md` names the exact release. The first command downloads it (about 3 MB, prebuilt, no dependencies to fetch), and `--prefer-offline` keeps later commands from going back to the network.
 
 To try it without an agent, from inside any git repository:
 
 ```sh
-node ~/.claude/skills/boundary-object/scripts/boundary.mjs demo
+npx -y --prefer-offline https://github.com/bevan-philip/skills/releases/download/boundary-object-v0.1.0/boundary-object-0.1.0.tgz demo
 ```
 
 This copies the three example boards (an interview, a plan and a report) into the board directory and opens the interview. To play the agent's side, run `wait session-store-interview` in another terminal and press **Send round 2** on the page.
@@ -32,16 +34,17 @@ This copies the three example boards (an interview, a plan and a report) into th
 | --- | --- |
 | `SKILL.md` | Instructions for the agent: when to use a board, the workflow, how to write a good one, how to act on feedback. |
 | `references/blocks.md` | Every block type with a JSON example. |
-| `scripts/boundary.mjs` | Dependency-free CLI: `new`, `open`, `check`, `wait`, `feedback`, `list`, `stop`, `demo`. |
-| `examples/` | An interview in its second round, a plan that uses every block type, and a report with before/after screenshots. |
+| `app/bin/boundary.mjs` | Dependency-free CLI: `new`, `open`, `check`, `wait`, `feedback`, `list`, `stop`, `demo`, `version`. It is the `boundary` bin of the released package. |
+| `app/examples/` | An interview in its second round, a plan that uses every block type, and a report with before/after screenshots. |
 | `app/` | TanStack Start + React + Tailwind v4 + shadcn/ui. `components/ui/` holds stock components from the shadcn registry (Radix base, Nova style; see `components.json`), unmodified; the board's own colours are in `components/board/marks.tsx` and `styles.css`. |
 | `app/src/lib/graph.ts`, `layout.ts` | Every box-and-arrow picture: `diagram` blocks, and Mermaid flowcharts and state diagrams parsed by [Pele](https://pele.run). Laid out by [ELK](https://eclipse.dev/elk/) (layered, orthogonal routing, inline edge labels, nested groups) from labels measured in the page font, then drawn with React Flow. Other Mermaid types (sequence diagrams, charts) are rendered by Pele itself. |
 | `app/src/lib/schema.ts` | The board and feedback schemas (zod), shared by the page, the server and `check`. |
 | `app/src/server/digest.ts` | Turns a round of feedback into the text the agent reads. |
+| `app/ci/smoke.mjs` | Runs a packed tarball through `npx` and checks that it works; CI runs it before every release. |
 
 ## How it works
 
-- **One server for all boards**, bound to 127.0.0.1 on port 4317 or the next free one. Boards live in `<temp dir>/boundary-object/<board-id>/` (override with `BOUNDARY_ROOT`). The server's details are recorded in `.server.json` there, and the CLI restarts it when the app is rebuilt.
+- **One server for all boards**, bound to 127.0.0.1 on port 4317 or the next free one. Boards live in `<temp dir>/boundary-object/<board-id>/` (override with `BOUNDARY_ROOT`). The server's details are recorded in `.server.json` there. The CLI restarts the server when it isn't the CLI's own version and build, as `/api/health` and `.server.json` report them, so a newer release or a rebuilt checkout takes over.
 - **Each side owns one file.** The agent writes `doc.json`; the server writes `feedback.json` (an autosaved draft plus submitted rounds). Every content change to `doc.json` becomes `history/N.json`, which is how the page knows which blocks changed since your last round.
 - **Long text lives in files.** Diffs, code and Mermaid source can sit in the board's `assets/` folder (`diffSrc`, `src`) instead of escaped JSON strings, so the agent writes `git diff > assets/x.diff` rather than retyping it. The server reads them in on every reload, so history snapshots hold the text and an edit to the file alone shows up as a change.
 - **Guidance arrives with the feedback.** The digest ends with a *How to respond* section covering only the kinds of feedback in that round, so `SKILL.md` stays short.
@@ -57,9 +60,19 @@ cd app
 npm install
 npm run dev        # vite dev server; set BOUNDARY_ROOT to a boards directory
 npm run typecheck
-npm run build      # what the CLI runs
+npm run build      # what the CLI runs in a checkout
+npm pack           # builds and packs boundary-object-<version>.tgz, as a release does
+npm run smoke -- boundary-object-<version>.tgz
 npx shadcn@latest add <component>   # add a stock shadcn component to components/ui
 ```
+
+To have the agent use your checkout instead of the release, set `BOUNDARY_CLI` to the absolute path of `app/bin/boundary.mjs`. Run from a checkout, the CLI installs and builds the app on first use and rebuilds it whenever the sources change, and the board server restarts onto the new build.
+
+## Releasing
+
+A release is a GitHub release tagged `boundary-object-v<version>` whose asset is the packed tarball. The *boundary-object release* workflow makes it when a push to `main` changes `app/` and the version in `app/package.json` has no release yet: it packs the app, smoke-tests the tarball and publishes it. `SKILL.md` names the release's URL, so the skill and the app it runs change together.
+
+To ship a change to the app, run `npm run bump -- patch` in `app/` (or `minor` for a new feature or a change to the `doc.json` format or the CLI) in the same pull request. It bumps the version and points `SKILL.md` and this README at the new release's URL. The *boundary-object check* workflow fails a pull request that changes the app without a newer version, or whose docs name another release (`npm run version-check -- origin/main` runs the same check locally). The release appears about a minute after the merge; until then the URL in `SKILL.md` on `main` is a 404.
 
 ## Limits and ideas
 
