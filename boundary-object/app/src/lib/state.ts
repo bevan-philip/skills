@@ -1,4 +1,4 @@
-import type { Board, BlockOf, FeedbackFile, FeedbackItem, Reopened, Round } from './schema'
+import type { Block, Board, BlockOf, FeedbackFile, FeedbackItem, Reopened, Round } from './schema'
 
 // Folds every submitted round plus the unsent draft into "what the human
 // currently thinks". Later entries win. `from` records where each answer came
@@ -170,18 +170,24 @@ export function threadsFor(s: EffectiveState, block: string): Thread[] {
   return roots.map((root) => ({ root, followups: s.comments.filter((c) => c.replyTo === root.id) }))
 }
 
+// Blocks the human answers by picking one of the agent's options: a decision,
+// or an ask in a grilling round.
+export type ChoiceBlock = BlockOf<'decision'> | BlockOf<'ask'>
+
+export const isChoiceBlock = (b: Block | undefined): b is ChoiceBlock => b?.type === 'decision' || b?.type === 'ask'
+
 // A choice counts only if it names an option, a non-blank answer of the
 // human's own, or hands the decision back ("find out first", "your call");
 // clearing "something else" leaves an empty one behind. Given the decision, an
 // option the agent has since removed doesn't count either.
-export const answered = (c?: { option?: string; other?: string; defer?: string }, block?: BlockOf<'decision'>) =>
+export const answered = (c?: { option?: string; other?: string; defer?: string }, block?: ChoiceBlock) =>
   Boolean(c && (c.defer || (c.option && (!block || block.options.some((o) => o.id === c.option))) || c.other?.trim()))
 
 // What a decision asks. An answer holds only while this stays the same: when
 // the agent rewrites the question or an option, the human answered something
 // else, so the decision reopens. Recommendations, evidence and metrics can
 // change underneath an answer without reopening it.
-export const decisionSubstance = (b: BlockOf<'decision'>) =>
+export const decisionSubstance = (b: ChoiceBlock) =>
   JSON.stringify([b.question, b.options.map((o) => [o.id, o.label, o.summary ?? '', o.pros ?? [], o.cons ?? []])])
 
 // The answer ids that `effectiveState` should skip: every reopened answer, or
@@ -197,7 +203,7 @@ export function reopenedItems(reopened: Record<string, Reopened[]>, upTo = Infin
 
 // The latest reopening of a decision, while the human hasn't answered it again.
 export function pendingReopen(
-  block: BlockOf<'decision'>,
+  block: ChoiceBlock,
   reopened: Record<string, Reopened[]>,
   sent: EffectiveState,
 ): Reopened | null {
@@ -206,18 +212,39 @@ export function pendingReopen(
 }
 
 // A label for a choice, as the decision named it.
-export function choiceLabel(c: { option?: string; other?: string; defer?: string }, block?: BlockOf<'decision'>) {
+export function choiceLabel(c: { option?: string; other?: string; defer?: string }, block?: ChoiceBlock) {
   if (c.defer === 'explore') return 'find out first'
   if (c.defer === 'delegate') return 'your call'
   if (c.option) return block?.options.find((o) => o.id === c.option)?.label ?? c.option
   return c.other ? `your own answer: ${c.other}` : ''
 }
 
+// Asks are numbered Q1, Q2… in the order they appear on the board.
+export function askNumbers(doc: Board): Map<string, number> {
+  return new Map(doc.blocks.filter((b) => b.type === 'ask').map((b, i) => [b.id, i + 1]))
+}
+
+// Blocks an ask draws inside itself, which the page leaves out of the main flow.
+export function shownByAsks(doc: Board): Set<string> {
+  return new Set(doc.blocks.flatMap((b) => (b.type === 'ask' ? b.show : [])))
+}
+
+// Whether the interview is still going, so there is no plan to approve: an ask
+// the human hasn't answered in a round they sent, or answers the agent hasn't
+// revised the board for yet.
+export function interviewOpen(doc: Board, fb: FeedbackFile, revision: number, skip: ReadonlySet<string>): boolean {
+  const sent = effectiveState({ ...fb, draft: { items: [] } }, revision, skip)
+  return (
+    doc.blocks.some((b) => b.type === 'ask' && !answered(sent.choices.get(b.id), b)) ||
+    fb.rounds.some((r) => r.verdict === 'answer' && revision <= r.revision)
+  )
+}
+
 // Blocks that ask the human for something and have no answer yet.
 export function openAsks(doc: Board, s: EffectiveState): string[] {
   const open: string[] = []
   for (const b of doc.blocks) {
-    if (b.type === 'decision' && !answered(s.choices.get(b.id), b)) open.push(b.id)
+    if (isChoiceBlock(b) && !answered(s.choices.get(b.id), b)) open.push(b.id)
     if (b.type === 'question' && !s.answers.get(b.id)?.text.trim()) open.push(b.id)
     if (b.type === 'confirm' && b.items.some((it) => !s.confirms.has(key(b.id, it.id)))) open.push(b.id)
   }

@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import type { BlockOf, Reopened } from '@/lib/schema'
-import { answered, choiceLabel, key, pendingReopen } from '@/lib/state'
+import { answered, choiceLabel, key, pendingReopen, type ChoiceBlock } from '@/lib/state'
 import { useBoard } from '@/components/board/context'
 import { Markdown } from '@/components/board/markdown'
 import { AnswerText } from '@/components/board/answer'
@@ -65,7 +65,7 @@ export function CalloutView({ block }: { block: BlockOf<'callout'> }) {
 }
 
 // Where the human's choice stands: sent, or a draft that changes what was sent.
-function ChoiceStatus({ block }: { block: BlockOf<'decision'> }) {
+export function ChoiceStatus({ block }: { block: ChoiceBlock }) {
   const { state, sent } = useBoard()
   const current = state.choices.get(block.id)
   const before = sent.choices.get(block.id)
@@ -98,7 +98,7 @@ function ChoiceStatus({ block }: { block: BlockOf<'decision'> }) {
 
 // Options side by side on whatever the agent measured, so the human compares
 // results rather than predictions.
-function MetricsTable({ block }: { block: BlockOf<'decision'> }) {
+export function MetricsTable({ block }: { block: ChoiceBlock }) {
   const names = [...new Set(block.options.flatMap((o) => Object.keys(o.metrics ?? {})))]
   if (!names.length) return null
   return (
@@ -216,7 +216,7 @@ function OptionBody({
   )
 }
 
-function Quote({ label, text }: { label: string; text: string }) {
+export function Quote({ label, text }: { label: string; text: string }) {
   return (
     <div className="border-l-2 border-human pl-3 text-[13px]">
       <span className="text-[11px] text-muted-foreground">{label}</span>
@@ -455,7 +455,7 @@ function OpenDecision({ block, onKeep }: { block: BlockOf<'decision'>; onKeep?: 
 }
 
 // Answers the agent made obsolete by changing the decision, one line each.
-function DecisionHistory({ entries }: { entries: Reopened[] }) {
+export function DecisionHistory({ entries }: { entries: Reopened[] }) {
   return (
     <ul className="flex flex-col gap-1 border-t pt-2.5">
       {entries.map((r) => (

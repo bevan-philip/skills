@@ -1,0 +1,17 @@
+{
+  "draft": { "items": [] },
+  "rounds": [
+    {
+      "n": 1,
+      "at": "2026-11-03T10:12:00.000Z",
+      "revision": 1,
+      "verdict": "answer",
+      "items": [
+        { "id": "fb-demo-scope", "type": "choice", "block": "scope", "option": "store-only" },
+        { "id": "fb-demo-store", "type": "choice", "block": "store", "option": "postgres" },
+        { "id": "fb-demo-expiry", "type": "choice", "block": "expiry", "option": "sliding-30", "note": "But cap it at 90 days from login, whatever happens." }
+      ],
+      "deliveredAt": "2026-11-03T10:12:02.000Z"
+    }
+  ]
+}

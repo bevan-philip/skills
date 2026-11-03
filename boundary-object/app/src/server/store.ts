@@ -16,9 +16,10 @@ import {
   type Reopened,
   type Round,
   type Verdict,
+  INTERVIEW_OPEN,
   STALE_REVISION,
 } from '@/lib/schema'
-import { answered, choiceLabel, decisionSubstance } from '@/lib/state'
+import { answered, choiceLabel, decisionSubstance, interviewOpen, isChoiceBlock, reopenedItems } from '@/lib/state'
 
 // One server for all boards. Each board lives in BOUNDARY_ROOT/<id>/:
 //   doc.json       written by the agent
@@ -252,14 +253,14 @@ async function reopenedAnswers(e: Entry, last: number, next?: Board): Promise<Re
     for (const c of r.items) {
       if (c.type !== 'choice' || c.defer === 'explore' || !answered(c)) continue
       const before = (await snapshotAt(e, r.revision))?.blocks.find((b) => b.id === c.block)
-      if (before?.type !== 'decision') continue
+      if (!isChoiceBlock(before)) continue
       // Once the human sends another answer to this decision, this one is
       // theirs to have replaced, not the agent's to have reopened.
       const replaced = rounds.slice(i + 1).find((later) => later.items.some((x) => x.type === 'choice' && x.block === c.block))
       const was = decisionSubstance(before)
       for (let rev = r.revision + 1; rev <= Math.min(end, replaced?.revision ?? end); rev++) {
         const now = (await at(rev))?.blocks.find((b) => b.id === c.block)
-        if (now?.type !== 'decision' || decisionSubstance(now) === was) continue
+        if (!isChoiceBlock(now) || decisionSubstance(now) === was) continue
         ;(out[c.block] ??= []).push({
           item: c.id,
           round: r.n,
@@ -282,9 +283,9 @@ async function unexplainedReopens(e: Entry, last: number, next: Board): Promise<
   const out: string[] = []
   next.blocks.forEach((b, i) => {
     const r = after[b.id]?.find((x) => x.revision === last + 1)
-    if (b.type !== 'decision' || !r || b.changeNote?.trim()) return
+    if (!isChoiceBlock(b) || !r || b.changeNote?.trim()) return
     out.push(
-      `- blocks.${i}(${b.id}): the human answered this decision in round ${r.round} (${JSON.stringify(r.answer)}). ` +
+      `- blocks.${i}(${b.id}): the human answered this ${b.type === 'ask' ? 'question' : 'decision'} in round ${r.round} (${JSON.stringify(r.answer)}). ` +
         'Changing its question or options reopens it and asks them again, so set "changeNote" to say why it is open again. ' +
         'To keep their answer, change only recommended, evidence, metrics, context or changeNote.',
     )
@@ -504,6 +505,14 @@ export async function submit(
       verdict: input.verdict,
       overall: input.overall?.trim() || undefined,
       items: d.items,
+    }
+    // The page hides approval while the interview is open; this holds the line
+    // for every path that could still send one (a dialog left open, say).
+    // The round itself counts: an approval that clears an answer leaves the
+    // interview open too.
+    if (input.verdict === 'approve' && e.doc) {
+      const after = { ...e.feedback, rounds: [...e.feedback.rounds, r] }
+      if (interviewOpen(e.doc, after, e.revision, reopenedItems(await reopenedAnswers(e, e.revision)))) throw new Error(INTERVIEW_OPEN)
     }
     e.feedback = { draft: { items: [] }, rounds: [...e.feedback.rounds, r] }
     await saveFeedback(e)

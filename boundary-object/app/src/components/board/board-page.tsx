@@ -1,11 +1,11 @@
 import * as React from 'react'
 import { Link } from '@tanstack/react-router'
-import { AlertTriangle, ArrowLeftRight, Bot, Check, CheckCircle2, CircleDot, MessageSquare, Send } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, Bot, Check, CheckCircle2, CircleDot, Loader2, MessageSquare, Send } from 'lucide-react'
 import { Mark, type Tone } from '@/components/board/marks'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { STALE_REVISION, type Board, type BoardView, type FeedbackItem, type Verdict } from '@/lib/schema'
-import { openAsks, threadsFor } from '@/lib/state'
+import { INTERVIEW_OPEN, STALE_REVISION, type Board, type BlockOf, type BoardView, type FeedbackItem, type Verdict } from '@/lib/schema'
+import { answered, askNumbers, isChoiceBlock, openAsks, shownByAsks, threadsFor } from '@/lib/state'
 import { BoardProvider, useBoard } from '@/components/board/context'
 import { BlockView } from '@/components/board/blocks'
 import { Markdown } from '@/components/board/markdown'
@@ -15,6 +15,8 @@ import { ThemeToggle } from '@/components/board/theme'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -84,7 +86,7 @@ function Presence() {
   )
 }
 
-function Header({ onSend }: { onSend: () => void }) {
+function Header({ onSend, grilling, ready }: { onSend: () => void; grilling: boolean; ready: boolean }) {
   const { doc, view, draft, saving } = useBoard()
   const count = draft.items.length
   return (
@@ -102,9 +104,9 @@ function Header({ onSend }: { onSend: () => void }) {
           <Presence />
           <span className="hidden w-14 text-right text-[11px] text-muted-foreground sm:block">{saving ? 'saving…' : count ? 'saved' : ''}</span>
           <ThemeToggle />
-          <Button variant={count ? 'default' : 'outline'} size="sm" onClick={onSend}>
+          <Button variant={count ? 'default' : 'outline'} size="sm" onClick={onSend} disabled={grilling && !ready}>
             <Send />
-            Send to agent
+            {grilling ? 'Send answers' : 'Send to agent'}
             {count > 0 && <span className="rounded bg-primary-foreground/20 px-1.5 text-[11px] tabular-nums">{count}</span>}
           </Button>
         </div>
@@ -115,11 +117,14 @@ function Header({ onSend }: { onSend: () => void }) {
 
 function Outline({ asks }: { asks: Set<string> }) {
   const { doc, state, changes } = useBoard()
+  const numbers = askNumbers(doc)
+  const shown = shownByAsks(doc)
   return (
     <nav className="sticky top-20 hidden max-h-[calc(100vh-6rem)] overflow-y-auto pr-2 xl:block">
       <div className="mb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">On this board</div>
       <ul className="flex flex-col gap-0.5 text-[13px]">
         {doc.blocks.map((b) => {
+          if (shown.has(b.id)) return null
           const comments = threadsFor(state, b.id).length
           if (b.type === 'section') {
             return (
@@ -142,7 +147,7 @@ function Outline({ asks }: { asks: Set<string> }) {
                     asks.has(b.id) ? 'bg-human' : changes[b.id] ? 'bg-changed' : 'bg-transparent',
                   )}
                 />
-                <span className="truncate">{b.title ?? b.type}</span>
+                <span className="truncate">{b.type === 'ask' ? `Q${numbers.get(b.id)} · ${b.title ?? b.question}` : (b.title ?? b.type)}</span>
                 {comments > 0 && (
                   <span className="ml-auto flex items-center gap-0.5 text-[11px] text-human">
                     <MessageSquare className="size-3" />
@@ -177,7 +182,7 @@ function LastRound() {
   const { view, doc, diff } = useBoard()
   const last = view.feedback.rounds.at(-1)
   if (!last) return null
-  const verdict = { approve: 'approved', changes: 'asked for changes', comment: 'sent comments' }[last.verdict]
+  const verdict = { approve: 'approved', changes: 'asked for changes', comment: 'sent comments', answer: 'answered' }[last.verdict]
   const title = (id: string) => doc.blocks.find((b) => b.id === id)?.title ?? id
   const updated = Object.keys(diff.blocks).filter((id) => diff.blocks[id] === 'changed')
   const added = Object.keys(diff.blocks).filter((id) => diff.blocks[id] === 'new')
@@ -256,9 +261,10 @@ function LastRound() {
   )
 }
 
-function Hero({ asks }: { asks: string[] }) {
+function Hero({ asks, grilling }: { asks: string[]; grilling: boolean }) {
   const { doc, view } = useBoard()
-  const label = doc.kind === 'plan' ? 'Plan for your review' : 'Implementation report'
+  const numbers = askNumbers(doc)
+  const label = grilling ? 'Questions before the plan' : doc.kind === 'plan' ? 'Plan for your review' : 'Implementation report'
   return (
     <section className="flex flex-col gap-5 pt-4">
       <div className="flex flex-col gap-3" data-quote-block="summary">
@@ -283,14 +289,14 @@ function Hero({ asks }: { asks: string[] }) {
         </Alert>
       )}
       <LastRound />
-      {asks.length > 0 && (
+      {asks.length > 0 && !grilling && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-medium text-human">The agent needs you on:</span>
           {asks.map((id) => {
             const b = doc.blocks.find((x) => x.id === id)
             return (
               <Chip key={id} href={`#b-${id}`} tone="human">
-                {b?.title ?? id}
+                {b?.type === 'ask' ? `Q${numbers.get(id)} · ${b.title ?? b.question}` : (b?.title ?? id)}
               </Chip>
             )
           })}
@@ -308,7 +314,7 @@ function describe(doc: Board, it: FeedbackItem): string {
       return `${it.replyTo ? 'Reply' : 'Comment'} on ${it.target.label ?? title(it.target.block)}: “${it.text}”`
     case 'choice': {
       const b = blk(it.block)
-      const opt = b?.type === 'decision' ? b.options.find((o) => o.id === it.option)?.label : undefined
+      const opt = isChoiceBlock(b) ? b.options.find((o) => o.id === it.option)?.label : undefined
       if (it.defer) return `${title(it.block)}: ${it.defer === 'explore' ? 'find out first' : 'your call'}`
       return `${title(it.block)}: ${opt ?? (it.other ? `“${it.other}”` : 'cleared')}`
     }
@@ -341,13 +347,26 @@ function describe(doc: Board, it: FeedbackItem): string {
   }
 }
 
-function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange: (o: boolean) => void; asks: string[] }) {
+function SendDialog({
+  open,
+  onOpenChange,
+  asks,
+  thinking,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  asks: string[]
+  // The interview is still going (questions open, or the agent working
+  // through answers): there is no plan to approve yet, so only comments and
+  // change requests can go.
+  thinking: boolean
+}) {
   const { doc, draft, submit, view } = useBoard()
-  const [verdict, setVerdict] = React.useState<Verdict | null>(null)
+  const [picked, setVerdict] = React.useState<Verdict | null>(null)
   const [overall, setOverall] = React.useState('')
   const [sending, setSending] = React.useState(false)
   const [failure, setFailure] = React.useState<string | null>(null)
-  const options: { value: Verdict; title: string; body: string }[] =
+  const choices: { value: Verdict; title: string; body: string }[] =
     doc.kind === 'plan'
       ? [
           { value: 'approve', title: 'Approve the plan', body: 'The agent starts building, applying your edits and answers.' },
@@ -359,6 +378,8 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
           { value: 'changes', title: 'Request changes', body: 'The agent fixes what you flagged and reports back.' },
           { value: 'comment', title: 'Just comments', body: 'Questions only; no verdict yet.' },
         ]
+  const options = thinking ? choices.filter((o) => o.value !== 'approve') : choices
+  const verdict = picked && options.some((o) => o.value === picked) ? picked : null
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
@@ -381,6 +402,12 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">No individual comments or edits — you can still send a verdict.</p>
+        )}
+        {thinking && (
+          <p className="text-[13px] text-muted-foreground">
+            The agent is still asking questions or working through your answers, so there is no plan to approve yet.
+            Approval opens once it has written one.
+          </p>
         )}
         {asks.length > 0 && (
           <Alert className="bg-changed-soft/50">
@@ -427,7 +454,9 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
                 onOpenChange(false)
               } catch (e) {
                 setFailure(
-                  e instanceof Error && e.message.includes(STALE_REVISION)
+                  e instanceof Error && e.message.includes(INTERVIEW_OPEN)
+                    ? 'The agent is still asking questions or working through your answers, so there is no plan to approve yet. Nothing was sent.'
+                    : e instanceof Error && e.message.includes(STALE_REVISION)
                     ? 'The agent changed the board while you were reviewing it, so nothing was sent. Look over the blocks marked updated or new, then approve again.'
                     : 'Couldn’t reach the board server, so nothing was sent. Your feedback is still here as a draft; try again.',
                 )
@@ -444,27 +473,145 @@ function SendDialog({ open, onOpenChange, asks }: { open: boolean; onOpenChange:
   )
 }
 
+// The asks still waiting on the human: no answer sent yet, or one the agent
+// has since reopened. While there are any, the board is grilling: answers go
+// back in a light round with no verdict, and approval waits for the plan.
+function usePendingAsks() {
+  const { doc, sent } = useBoard()
+  return doc.blocks.filter((b): b is BlockOf<'ask'> => b.type === 'ask' && !answered(sent.choices.get(b.id), b))
+}
+
+// Sends a grilling round with the bar's note. The note lives here rather than
+// in the bar, so the header's button sends it too and it outlives the bar.
+function useSendAnswers() {
+  const { submit, draft } = useBoard()
+  const [sending, setSending] = React.useState(false)
+  const [failure, setFailure] = React.useState<string | null>(null)
+  const [note, setNote] = React.useState('')
+  const ready = draft.items.length > 0 || note.trim().length > 0
+  const send = async () => {
+    if (sending || !ready) return
+    setSending(true)
+    setFailure(null)
+    try {
+      await submit('answer', note)
+      setNote('')
+    } catch {
+      setFailure('Couldn’t reach the board server, so nothing was sent. Your answers are still here; try again.')
+    } finally {
+      setSending(false)
+    }
+  }
+  return { send, sending, failure, note, setNote, ready }
+}
+
+// A grilling round in one click: how many of the open questions have an
+// answer, and a button that sends them. Unanswered ones stay open for later.
+function RoundBar({ pending, answers }: { pending: ReturnType<typeof usePendingAsks>; answers: ReturnType<typeof useSendAnswers> }) {
+  const { doc, state, view } = useBoard()
+  const { note, setNote, ready } = answers
+  const numbers = askNumbers(doc)
+  const done = pending.filter((b) => answered(state.choices.get(b.id), b)).length
+  const go = answers.send
+  const goRef = React.useRef(go)
+  goRef.current = go
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Inside a text field the same keys belong to it (a comment box posts its
+      // comment, and an answer only counts once its field loses focus).
+      if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || (e.target as HTMLElement)?.closest('input, textarea')) return
+      e.preventDefault()
+      void goRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const round = (view.feedback.rounds.at(-1)?.n ?? 0) + 1
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+      <div className="mx-auto flex max-w-[820px] flex-col gap-2 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="text-sm font-medium">
+            {done} of {pending.length} answered
+          </span>
+          <div className="flex flex-wrap items-center gap-1">
+            {pending.map((b) => {
+              const ok = answered(state.choices.get(b.id), b)
+              return (
+                <a
+                  key={b.id}
+                  href={`#b-${b.id}`}
+                  title={b.question}
+                  className={cn(
+                    'rounded-md border px-1.5 py-0.5 text-[11px] font-medium tabular-nums hover:bg-accent',
+                    ok ? 'border-primary bg-human-soft text-human' : 'text-muted-foreground',
+                  )}
+                >
+                  {ok && <Check className="-mt-px mr-0.5 inline size-3" />}Q{numbers.get(b.id)}
+                </a>
+              )
+            })}
+          </div>
+          <Input
+            className="h-8 min-w-40 flex-1 text-[13px]"
+            placeholder="Anything else? (optional)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void go()
+            }}
+          />
+          <Button size="sm" disabled={!ready || answers.sending} onClick={go}>
+            {answers.sending ? <Loader2 className="animate-spin" /> : <Send />}
+            {done < pending.length && done > 0 ? `Send ${done}, keep ${pending.length - done} open` : `Send round ${round}`}
+            <KbdGroup className="ml-1 hidden opacity-70 sm:inline-flex">
+              <Kbd className="bg-primary-foreground/15 text-primary-foreground">⌘/Ctrl</Kbd>
+              <Kbd className="bg-primary-foreground/15 text-primary-foreground">Enter</Kbd>
+            </KbdGroup>
+          </Button>
+        </div>
+        {answers.failure && <p className="text-[13px] text-removed">{answers.failure}</p>}
+      </div>
+    </div>
+  )
+}
+
 function Shell() {
   const { doc, state, view } = useBoard()
   const [sending, setSending] = React.useState(false)
   const asks = openAsks(doc, state)
   const askSet = new Set(asks)
+  const shown = shownByAsks(doc)
   const last = view.feedback.rounds.at(-1)
+  const pending = usePendingAsks()
+  const grilling = pending.length > 0
+  const answers = useSendAnswers()
+  // Answers sent and the agent hasn't revised since: its next round is coming.
+  // Any answer round counts, not just the last one, so a comment sent while
+  // waiting doesn't open approval of a board with no plan on it.
+  const thinking = !grilling && view.feedback.rounds.some((r) => r.verdict === 'answer' && view.revision <= r.revision)
   return (
-    <div className="min-h-screen pb-24">
-      <Header onSend={() => setSending(true)} />
+    <div className={cn('min-h-screen', grilling ? 'pb-40' : 'pb-24')}>
+      <Header grilling={grilling} ready={answers.ready} onSend={() => (grilling ? void answers.send() : setSending(true))} />
       {/* The outline sits at the far left; the middle column takes the rest of
           the width and centres the content in it, so wide cards grow into free
           space rather than over the outline. */}
       <div className="grid gap-10 px-4 xl:grid-cols-[220px_minmax(0,1fr)_220px] xl:px-6">
         <Outline asks={askSet} />
         <main className="flex min-w-0 flex-col gap-5 pt-6 wrap-anywhere *:mx-auto *:w-full *:max-w-[820px] [&_button]:wrap-normal [&_table]:wrap-normal">
-          <Hero asks={asks} />
-          {doc.blocks.map((b) => (
-            <BlockView key={b.id} block={b} needsInput={askSet.has(b.id)} />
-          ))}
+          <Hero asks={asks} grilling={grilling} />
+          {doc.blocks.map((b) => (shown.has(b.id) ? null : <BlockView key={b.id} block={b} needsInput={askSet.has(b.id)} />))}
+          {!grilling && (
           <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center">
-            {last?.verdict === 'approve' && view.revision <= last.revision ? (
+            {thinking ? (
+              <>
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  The agent is working through your answers. Its next questions, or the plan once nothing is left to ask, appear
+                  here by themselves.
+                </p>
+              </>
+            ) : last?.verdict === 'approve' && view.revision <= last.revision ? (
               <>
                 <CheckCircle2 className="size-6 text-added" />
                 <p className="text-sm text-muted-foreground">You approved this. The agent takes it from here.</p>
@@ -478,11 +625,19 @@ function Shell() {
               </>
             )}
           </div>
+          )}
         </main>
         <div className="hidden xl:block" />
       </div>
       <SelectionCommenter />
-      <SendDialog open={sending} onOpenChange={setSending} asks={asks} />
+      {grilling && <RoundBar pending={pending} answers={answers} />}
+      <SendDialog
+        open={sending}
+        onOpenChange={setSending}
+        asks={asks}
+        // An ask left unanswered, the draft included, keeps the interview open.
+        thinking={thinking || grilling || asks.some((id) => doc.blocks.find((b) => b.id === id)?.type === 'ask')}
+      />
     </div>
   )
 }

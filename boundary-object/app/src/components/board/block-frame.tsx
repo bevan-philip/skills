@@ -9,17 +9,24 @@ import { Markdown } from '@/components/board/markdown'
 import { BlockThreads, Composer } from '@/components/board/threads'
 import { useBoard } from '@/components/board/context'
 import { blockMeta } from '@/components/board/block-meta'
-import { pendingReopen, threadsFor } from '@/lib/state'
+import { isChoiceBlock, pendingReopen, threadsFor } from '@/lib/state'
 import { cn } from '@/lib/utils'
+
+// Set inside a block that draws other blocks within it (an ask's `show`), so
+// they sit flat in their parent rather than as cards of their own.
+export const NestedFrame = React.createContext(false)
 
 export function BlockFrame({
   block,
+  label,
   needsInput,
   wide,
   toolbar,
   children,
 }: {
   block: Block
+  // Shown instead of the block's title, e.g. "Q3 · Session storage".
+  label?: string
   needsInput?: boolean
   wide?: boolean
   toolbar?: React.ReactNode
@@ -30,9 +37,11 @@ export function BlockFrame({
   const [composing, setComposing] = React.useState(false)
   const meta = blockMeta(block)
   const Icon = meta.icon
+  const heading = label ?? block.title ?? meta.label
+  const nested = React.useContext(NestedFrame)
   const change = changes[block.id]
   // A reopened decision shows its change note where the human's answer was.
-  const reopenedHere = block.type === 'decision' && pendingReopen(block, view.reopened, sent) !== null
+  const reopenedHere = isChoiceBlock(block) && pendingReopen(block, view.reopened, sent) !== null
   const ref = React.useRef<HTMLDivElement>(null)
   const threads = threadsFor(state, block.id).length
 
@@ -59,16 +68,17 @@ export function BlockFrame({
         change === 'changed' && 'ring-changed/50',
         change === 'new' && 'ring-added/50',
         // Diagrams and mockups get more room than text where the page has it.
-        wide && 'max-w-[1040px]!',
+        wide && !nested && 'max-w-[1040px]!',
+        nested && 'rounded-lg bg-background',
       )}
     >
-      <div className="flex items-start gap-3 px-5 pt-4 pb-3">
+      <div className={cn('flex items-start gap-3 pt-4 pb-3', nested ? 'px-4' : 'px-5')}>
         <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <Icon className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[15px] leading-snug font-semibold">{block.title ?? meta.label}</h3>
+            <h3 className="text-[15px] leading-snug font-semibold">{heading}</h3>
             {needsInput && <Mark tone="human">needs you</Mark>}
             {change === 'new' && <Mark tone="added">new</Mark>}
             {change === 'changed' && <Mark tone="changed">updated</Mark>}
@@ -108,15 +118,15 @@ export function BlockFrame({
         </div>
       </div>
       <CollapsibleContent>
-        <div className="flex flex-col gap-4 px-5 pb-5">
+        <div className={cn('flex flex-col gap-4', nested ? 'px-4 pb-4' : 'px-5 pb-5')}>
           <div data-quote-block={block.id}>{children}</div>
           {diff.removedItems[block.id] && (
             <p className="text-xs text-muted-foreground">
               Removed since your last round:{' '}
-              {diff.removedItems[block.id].map((label, i) => (
+              {diff.removedItems[block.id].map((gone, i) => (
                 <React.Fragment key={i}>
                   {i > 0 && ', '}
-                  <span className="line-through decoration-removed/60">{label}</span>
+                  <span className="line-through decoration-removed/60">{gone}</span>
                 </React.Fragment>
               ))}
             </p>
@@ -124,7 +134,7 @@ export function BlockFrame({
           <BlockThreads block={block.id} />
           {composing && (
             <Composer
-              placeholder={`Comment on “${block.title ?? meta.label}”…`}
+              placeholder={`Comment on “${heading}”…`}
               onSubmit={(text) => {
                 addComment({ block: block.id }, text)
                 setComposing(false)

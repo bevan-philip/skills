@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { Block, Board, FeedbackFile, FeedbackItem, Reopened, Round, Target } from '@/lib/schema'
-import { answered, effectiveState, openAsks, reopenedItems, viewSteps } from '@/lib/state'
+import { answered, choiceLabel, effectiveState, isChoiceBlock, openAsks, reopenedItems, viewSteps } from '@/lib/state'
 import { edgeLabel, fromDiagram } from '@/lib/graph'
 
 // Renders one round of human feedback as plain text for the agent. Every
@@ -24,7 +24,7 @@ function itemName(b: Block | undefined, item: string, fallback?: string) {
   let name: string | undefined
   if (b?.type === 'steps') name = b.items.find((x) => x.id === item)?.title
   if (b?.type === 'confirm') name = b.items.find((x) => x.id === item)?.text
-  if (b?.type === 'decision') name = b.options.find((x) => x.id === item)?.label
+  if (isChoiceBlock(b)) name = b.options.find((x) => x.id === item)?.label
   // Arrows are addressed as "from->to" (plus "#2" and so on for parallel ones).
   const edge = (b?.type === 'diagram' || b?.type === 'mermaid') && item.includes('->')
   if (b?.type === 'diagram') {
@@ -49,7 +49,7 @@ function itemName(b: Block | undefined, item: string, fallback?: string) {
           ? 'file'
           : b?.type === 'table'
             ? 'row'
-            : b?.type === 'decision'
+            : isChoiceBlock(b)
               ? 'option'
               : 'item'
   if (kind === 'file') return `file ${item}`
@@ -90,6 +90,10 @@ const verdictLine: Record<Round['verdict'], Record<Board['kind'], string>> = {
     plan: 'COMMENTS ONLY (no verdict yet). Answer in doc.json, adjust the plan if needed, then wait again.',
     report: 'COMMENTS ONLY (no verdict yet). Answer in doc.json, then wait again.',
   },
+  answer: {
+    plan: 'ANSWERS (a grilling round, not an approval). Do not start implementing. Fold the answers below into your design tree, ask the next round, then wait again.',
+    report: 'ANSWERS (no verdict yet). Act on the answers below, update the report, then wait again.',
+  },
 }
 
 // `doc` is the snapshot the human reviewed (round.revision); opts.revision is
@@ -123,37 +127,67 @@ export function renderDigest(
   if (round.overall) out.push(`Overall note: ${q(round.overall)}`)
 
   const choices = of('choice')
-  if (choices.length) {
-    out.push('', '## Decisions')
-    for (const c of choices) {
-      const b = blk(c.block)
-      if (!answered(c)) {
-        out.push(`- ${blockName(b, c.block)} → cleared their earlier answer (now unanswered)`)
-        continue
+  // What the human had sent before this round, to tell a changed answer from
+  // a first one.
+  const prior = effectiveState(
+    { draft: { items: [] }, rounds: fb.rounds.filter((r) => r.n < round.n) },
+    round.revision,
+    reopenedItems(opts.reopened, round.revision),
+  )
+  const asked = choices.filter((c) => blk(c.block)?.type === 'ask')
+  const decided = choices.filter((c) => blk(c.block)?.type !== 'ask')
+  // Asks whose answer this round replaced one the human had sent before.
+  const changed: { c: (typeof choices)[number]; was: string; followers: string[] }[] = []
+  const choiceLines = (c: (typeof choices)[number]) => {
+    const b = blk(c.block)
+    const ask = b?.type === 'ask'
+    const lines: string[] = []
+    if (!answered(c)) {
+      lines.push(`- ${blockName(b, c.block)} → cleared their earlier answer (now unanswered)`)
+    } else if (c.defer === 'explore') {
+      lines.push(
+        `- ${blockName(b, c.block)} → FIND OUT FIRST. Don't ${ask ? 'settle' : 'decide'} this yet: ${ask ? 'look into it' : 'try the options for real'}, record what you found, and ask again.`,
+      )
+      if (c.note) lines.push(`  what they want to know: ${q(c.note)}`)
+    } else if (c.defer === 'delegate') {
+      const rec = isChoiceBlock(b) ? b.options.find((o) => o.recommended) : undefined
+      lines.push(
+        `- ${blockName(b, c.block)} → YOUR CALL. The human leaves this to you${rec ? `; your recommendation is [${rec.id}]` : ''}. Say which option you took in "status" or the decision's "changeNote".`,
+      )
+      if (c.note) lines.push(`  note: ${q(c.note)}`)
+    } else {
+      const rec = isChoiceBlock(b) ? b.options.find((o) => o.recommended) : undefined
+      if (ask && rec && rec.id === c.option) {
+        lines.push(`- ${blockName(b, c.block)} → YES: your recommendation, ${itemName(b, c.option)}`)
+      } else {
+        const picked = c.option ? itemName(b, c.option) : `their own answer: ${q(c.other ?? '')}`
+        const vs = rec ? (rec.id === c.option ? ' (your recommendation)' : ` (you recommended [${rec.id}])`) : ''
+        lines.push(`- ${blockName(b, c.block)} → ${picked}${vs}`)
       }
-      if (c.defer === 'explore') {
-        out.push(`- ${blockName(b, c.block)} → FIND OUT FIRST. Don't decide this yet: try the options for real, record what you found, and ask again.`)
-        if (c.note) out.push(`  what they want to know: ${q(c.note)}`)
-        continue
-      }
-      if (c.defer === 'delegate') {
-        const rec = b?.type === 'decision' ? b.options.find((o) => o.recommended) : undefined
-        out.push(
-          `- ${blockName(b, c.block)} → YOUR CALL. The human leaves this to you${rec ? `; your recommendation is [${rec.id}]` : ''}. Say which option you took in "status" or the decision's "changeNote".`,
-        )
-        if (c.note) out.push(`  note: ${q(c.note)}`)
-        continue
-      }
-      const picked = c.option
-        ? itemName(b, c.option)
-        : `their own answer: ${q(c.other ?? '')}`
-      const rec = b?.type === 'decision' ? b.options.find((o) => o.recommended) : undefined
-      const vs = rec ? (rec.id === c.option ? ' (your recommendation)' : ` (you recommended [${rec.id}])`) : ''
-      out.push(`- ${blockName(b, c.block)} → ${picked}${vs}`)
       const again = reopenedBefore(c.block)
-      if (again) out.push(`  (answered again after you reopened it; their round ${again.round} answer was ${q(again.answer)})`)
-      if (c.note) out.push(`  note: ${q(c.note)}`)
+      if (again) lines.push(`  (answered again after you reopened it; their round ${again.round} answer was ${q(again.answer)})`)
+      if (c.note) lines.push(`  note: ${q(c.note)}`)
     }
+    // A changed answer to an ask can pull the rug from under the questions
+    // asked on top of it.
+    const was = prior.choices.get(c.block)
+    if (ask && was && answered(was, b) && (was.option !== c.option || was.other !== c.other || was.defer !== c.defer)) {
+      const followers = doc.blocks.filter((x) => x.type === 'ask' && x.after.includes(c.block)).map((x) => x.id)
+      const label = choiceLabel(was, b)
+      changed.push({ c, was: label, followers })
+      lines.push(
+        `  CHANGED: their round ${was.round} answer was ${q(label)}.${followers.length ? ` Asks that follow from it: ${followers.map((id) => `[${id}]`).join(', ')}.` : ''}`,
+      )
+    }
+    return lines
+  }
+  if (asked.length) {
+    out.push('', '## Interview')
+    for (const c of asked) out.push(...choiceLines(c))
+  }
+  if (decided.length) {
+    out.push('', '## Decisions')
+    for (const c of decided) out.push(...choiceLines(c))
   }
 
   const tunes = of('tune')
@@ -260,7 +294,14 @@ export function renderDigest(
   if (!round.items.length && !round.overall) out.push('', '(No individual items in this round.)')
 
   const still = openAsks(doc, sent)
-  if (still.length && round.verdict !== 'approve') {
+  const openQuestions = still.filter((id) => blk(id)?.type === 'ask')
+  if (openQuestions.length && round.verdict === 'answer') {
+    out.push('', `Questions still open (the human hasn't answered them yet; leave them as they are): ${openQuestions.map((id) => `[${id}]`).join(', ')}.`)
+  }
+  const otherOpen = round.verdict === 'answer' ? still.filter((id) => !openQuestions.includes(id)) : still
+  if (round.verdict === 'answer') {
+    if (otherOpen.length) out.push('', `Also unanswered on the board: ${otherOpen.map((id) => `[${id}]`).join(', ')}.`)
+  } else if (still.length && round.verdict !== 'approve') {
     out.push('', `Still unanswered on the board: ${still.map((id) => `[${id}]`).join(', ')}.`)
   } else if (still.length) {
     out.push('', `Left unanswered (use your recommendation): ${still.map((id) => `[${id}]`).join(', ')}.`)
@@ -268,7 +309,7 @@ export function renderDigest(
 
   // Guidance for each kind of item rides along only when that kind came back,
   // so SKILL.md doesn't have to carry all of it up front.
-  const qualified = choices.some((c) => c.option && c.note)
+  const qualified = decided.some((c) => c.option && c.note)
   const exploring = choices.some((c) => c.defer === 'explore')
   const wrong = confirms.some((c) => c.value === 'no')
   const pinned = comments.some((c) => c.target?.pin && !c.target.element)
@@ -280,11 +321,24 @@ export function renderDigest(
       ? doc.kind === 'plan'
         ? '- Set "status" to what you are building now, then build it. When you are done, report back on a new board with kind "report".'
         : '- Set "status" to say you are wrapping up. No need to wait again unless you change something.'
-      : '- Update blocks in place and keep their ids so the human sees what changed. Set "status" to say what changed, run check, then wait again.',
+      : round.verdict === 'answer'
+        ? '- Keep every ask and its id on the board; answered ones show as settled. Set "status" to say where the interview stands, run check, then wait again.'
+        : '- Update blocks in place and keep their ids so the human sees what changed. Set "status" to say what changed, run check, then wait again.',
   )
+  if (round.verdict === 'answer')
+    out.push(
+      '- Fold each answer into your design tree. An answer that isn\'t your recommendation, or comes with a note, can reshape the branch below it: drop questions it makes moot and rethink the recommendations that hang off it.',
+      '- Look up any fact the answers raise yourself (read the code, run it, or send a subagent); never ask the human for something you can find out. Only the questions downstream of a lookup wait for it.',
+      '- Then ask the next round: every question whose prerequisites are now all settled, as one new `ask` each below the last one, with `after` naming the asks it builds on, your recommendation marked, and a picture in `show` where one helps. Leave out any question whose answer depends on one still open; it belongs to a later round.',
+      '- When nothing is left to ask, every branch visited and nothing silently assumed, write the plan on this board below the questions. With no ask open, the page offers the human approval, which is how they confirm you share an understanding. Build nothing before that.',
+    )
+  if (changed.length)
+    out.push(
+      '- A CHANGED answer means the human rethought something already settled. For each ask that follows from it, check whether its question or recommendation still holds. If not, rewrite it (that reopens it, so set `changeNote` to say which answer changed) or remove it.',
+    )
   if (exploring)
     out.push(
-      '- For each FIND OUT FIRST decision: spike the options (a scratch branch, a worktree or a subagent each when it needs code, never the human\'s working tree), measure what the human asked about, and put the results on each option as `evidence` (what you tried and saw) and `metrics` (numbers to compare). Keep the option ids, set `changeNote` on the decision, and ask again; the decision reopens on the board. Until they answer it, build nothing that depends on it, even if this round approves the rest.',
+      '- For each FIND OUT FIRST decision or ask: spike the options (a scratch branch, a worktree or a subagent each when it needs code, never the human\'s working tree), measure what the human asked about, and put the results on each option as `evidence` (what you tried and saw) and `metrics` (numbers to compare). Keep the option ids, set `changeNote` on the decision, and ask again; the decision reopens on the board. Until they answer it, build nothing that depends on it, even if this round approves the rest.',
     )
   if (tunes.length)
     out.push(
@@ -315,7 +369,7 @@ export function renderState(doc: Board | null, fb: FeedbackFile, revision: numbe
   const n = fb.rounds.length
   const out: string[] = [`# Current answers on ${label(doc.title)} (${n} round${n === 1 ? '' : 's'} sent)`]
   for (const b of doc.blocks) {
-    if (b.type === 'decision') {
+    if (isChoiceBlock(b)) {
       const c = s.choices.get(b.id)
       const explored = s.explored.get(b.id)
       const again = reopened[b.id]?.at(-1)

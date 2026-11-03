@@ -1,0 +1,137 @@
+{
+  "title": "Move sessions out of process memory",
+  "kind": "plan",
+  "summary": "Sessions live in a `Map` inside each API process, so every deploy logs everyone out and the second replica can't see the first one's logins. Before I write the plan, I want to settle how the shared store should behave: **three questions to start**.",
+  "status": "Round 1 of questions. No code changed yet.",
+  "blocks": [
+    {
+      "id": "questions",
+      "type": "section",
+      "title": "Questions"
+    },
+    {
+      "id": "scope",
+      "type": "ask",
+      "title": "Scope",
+      "question": "Ship the shared store on its own, with the list of signed-in devices as a follow-up?",
+      "context": "The store alone fixes the logouts. The device list adds a settings page and two endpoints.",
+      "reversible": true,
+      "options": [
+        {
+          "id": "store-only",
+          "label": "Store now, device list later",
+          "recommended": true,
+          "summary": "Smallest change that fixes the bug."
+        },
+        {
+          "id": "both",
+          "label": "Both in this change",
+          "summary": "One migration instead of two, but twice the review."
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "ask",
+      "title": "Session store",
+      "question": "Keep sessions in a Postgres table?",
+      "context": "We already run Postgres 15 (`src/db.ts`). Peak load is about 40 auth checks per second.",
+      "reversible": false,
+      "show": [
+        "store-diagram"
+      ],
+      "options": [
+        {
+          "id": "postgres",
+          "label": "Postgres table",
+          "recommended": true,
+          "summary": "No new infrastructure; one indexed read per request.",
+          "evidence": "Spiked on a scratch branch: the read adds 1.1 ms at p95."
+        },
+        {
+          "id": "redis",
+          "label": "Redis",
+          "summary": "Fastest, but a new service to deploy, monitor and back up."
+        }
+      ]
+    },
+    {
+      "id": "store-diagram",
+      "type": "diagram",
+      "title": "What an auth check talks to",
+      "groups": [
+        {
+          "id": "api",
+          "label": "API process"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "mw",
+          "label": "auth middleware",
+          "kind": "function",
+          "group": "api",
+          "status": "changed"
+        },
+        {
+          "id": "map",
+          "label": "in-memory Map",
+          "kind": "store",
+          "group": "api",
+          "status": "removed"
+        },
+        {
+          "id": "store",
+          "label": "SessionStore",
+          "kind": "function",
+          "group": "api",
+          "status": "added"
+        },
+        {
+          "id": "pg",
+          "label": "Postgres",
+          "kind": "db",
+          "status": "added"
+        }
+      ],
+      "edges": [
+        {
+          "from": "mw",
+          "to": "map",
+          "status": "removed"
+        },
+        {
+          "from": "mw",
+          "to": "store",
+          "status": "added"
+        },
+        {
+          "from": "store",
+          "to": "pg",
+          "label": "1 query",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "expiry",
+      "type": "ask",
+      "title": "Expiry",
+      "question": "Expire a session after 30 days without use?",
+      "reversible": true,
+      "options": [
+        {
+          "id": "sliding-30",
+          "label": "30 days, sliding",
+          "recommended": true,
+          "summary": "What the in-memory sessions do today."
+        },
+        {
+          "id": "absolute-30",
+          "label": "30 days from login",
+          "summary": "Simpler, but active users are signed out once a month."
+        }
+      ]
+    }
+  ]
+}
