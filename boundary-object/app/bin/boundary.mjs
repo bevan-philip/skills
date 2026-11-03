@@ -10,7 +10,8 @@
 //
 // Each `new` creates its own board directory under the system temp directory
 // (override with --root or BOUNDARY_ROOT), never in the project or this skill.
-// The web app in this package is installed and built on first use.
+// A released package ships the built web app; in a checkout of the sources
+// it is installed and built on first use, and rebuilt when they change.
 
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -20,6 +21,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const APP = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const VERSION = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8')).version
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
 const say = (...a) => process.stderr.write(a.join(' ') + '\n')
@@ -41,7 +43,8 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2))
-const [cmd, board] = args._
+const [first, board] = args._
+const cmd = first ?? (args.version ? 'version' : undefined)
 
 function projectRoot() {
   const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' })
@@ -82,12 +85,16 @@ function run(bin, argv, what) {
 }
 
 function ensureApp() {
+  const built = path.join(APP, 'dist', 'server', 'server.js')
+  if (!fs.existsSync(path.join(APP, 'src'))) {
+    if (!fs.existsSync(built)) die(`this copy of boundary-object has neither its sources nor a build (${built})`)
+    return fs.statSync(built).mtimeMs
+  }
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
   if (!fs.existsSync(path.join(APP, 'node_modules', '.package-lock.json'))) {
     const hasLock = fs.existsSync(path.join(APP, 'package-lock.json'))
     run(npm, [hasLock ? 'ci' : 'install', '--no-audit', '--no-fund', '--loglevel=error'], 'Installing the board app (first run only)…')
   }
-  const built = path.join(APP, 'dist', 'server', 'server.js')
   const src = Math.max(
     newestMtime(path.join(APP, 'src')),
     newestMtime(path.join(APP, 'package.json')),
@@ -331,6 +338,7 @@ const help = `boundary — share a plan or report with the human as an interacti
   stop                                          stop the board server
   path <board>                                  print the board directory
   demo                                          copy the example boards in and open them
+  version                                       print this CLI's version
 
 Boards: ${ROOT}`
 
@@ -364,6 +372,9 @@ switch (cmd) {
     break
   case 'path':
     console.log(needBoard())
+    break
+  case 'version':
+    console.log(VERSION)
     break
   default:
     console.log(help)

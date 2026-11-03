@@ -1,15 +1,38 @@
 {
-  "name": "boundary-object-app",
+  "name": "boundary-object",
+  "version": "0.1.0",
+  "description": "Interactive local boards for planning and reporting between an agent and a human.",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bevan-philip/skills.git",
+    "directory": "boundary-object/app"
+  },
+  "bin": {
+    "boundary": "bin/boundary.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "examples",
+    "server.mjs"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "srvx": "1.0.7"
   },
+  "bundleDependencies": [
+    "srvx"
+  ],
   "devDependencies": {
     "@fontsource-variable/geist": "5.3.0",
     "@tailwindcss/typography": "0.5.20",
